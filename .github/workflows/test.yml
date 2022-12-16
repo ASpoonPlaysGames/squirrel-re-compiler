@@ -11,6 +11,6 @@ jobs:
       
       - name: Run SquirrelStandalone
         run: |
-          "SquirrelStandalone.exe"
+          SquirrelStandalone.exe "mods"
         shell: cmd
 
