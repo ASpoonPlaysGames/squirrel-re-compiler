@@ -1,6 +1,6 @@
 const core = require('@actions/core');
 const github = require('@actions/github');
-var exec = require('child_process').execFile;
+const { exec } = require("child_process");
 
 
 
@@ -14,7 +14,7 @@ try
         console.log(data.toString());     
         core.setFailed(err);                  
     });
-    
+
     console.log("starting exe");
     exec('SquirrelStandalone.exe', function(err, data) {  
         console.log(err)
