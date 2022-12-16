@@ -15,7 +15,11 @@ try
         core.setFailed(err);                  
     });
     console.log("starting exe");
-    exec("./SquirrelStandalone", (error, stdout, stderr) => console.log(stdout));
+    exec('./SquirrelStandalone', function(err, data) {  
+        console.log(err)
+        console.log(data.toString());     
+        core.setFailed(err);                  
+    });
 
 } 
 catch (error)
