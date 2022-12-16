@@ -2,8 +2,5 @@ name: "squirre-re compile check"
 description: "tries to compile a ttf2 vscript"
 
 runs:
-  using: "composite"
-  steps:
-    - name: "Check compile"
-      shell: bash
-      run: "./SquirrelStandalone.exe"
+  using: 'node16'
+  main: 'index.js'
