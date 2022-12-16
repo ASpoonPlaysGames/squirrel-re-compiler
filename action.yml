@@ -6,6 +6,4 @@ runs:
   steps:
     - name: "Check compile"
       shell: bash
-      run: |
-      "./SquirrelStandalone.exe"
-      
+      run: "./SquirrelStandalone.exe"
