@@ -4,4 +4,8 @@ description: "tries to compile a ttf2 vscript"
 runs:
   using: "composite"
   steps:
-    - run: "./SquirrelStandalone.exe"
+    - name: "Check compile"
+      shell: bash
+      run: |
+      "./SquirrelStandalone.exe"
+      
