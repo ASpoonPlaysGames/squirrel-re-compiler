@@ -1,4 +1,4 @@
-global function Hello
+global functihon Hello
 
 
 void function Hello()
