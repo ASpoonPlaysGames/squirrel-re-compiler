@@ -1,0 +1,1272 @@
+global function ClMusic_Init
+
+const DEFAULT_FADE_TIME = 2.0
+const DEFAULT_MUSIC_GAP_TIME = 4.0
+const ACTION_MUSIC_DEBOUNCE_TIME = 30
+const MATCH_PROGRESS_ACTION_MUSIC_SHIFT_THRESHOLD = 50
+
+global function PlayMusic
+global function ForcePlayMusic
+global function ForcePlayMusicToCompletion
+global function StopMusic
+global function IsMusicTrackPlaying
+
+global function PlayActionMusic
+global function LoopLobbyMusic
+global function LoopLobbyMusic_Ext
+global function SetForcedMusicOnly
+global function ForceLoopMusic_DEPRECATED
+global function StopLoopMusic_DEPRECATED
+global function RegisterCinematicMusic
+global function RegisterClassicMPMusic
+global function SetClassMusicEnabled
+global function GetClassMusicEnabled
+global function SetGameStateMusicEnabled
+global function GetGameStateMusicEnabled
+
+global function ServerCallback_PlayTeamMusicEvent
+global function ServerCallback_PlayMusicToCompletion
+global function ServerCallback_PlayMusic
+global function RegisterLevelMusicForTeam
+
+global function ServerCallback_ForcePlayMusic
+
+global function SetMusicEnabled
+global function GetMusicEnabled
+
+global function OnSoundClassicMusicChanged
+
+int function GetTeamForMusic( entity player )
+{
+	if ( IsFFAGame() || IsMenuLevel() )
+		return TEAM_MILITIA
+
+	return player.GetTeam()
+}
+
+struct
+{
+	table< int, table< int, string > > musicForTeam
+	string currentMusicPlaying
+	string currentLoopingMusic
+
+	bool forcedMusicOnly
+	bool musicEnabled = true
+	bool classMusicEnabled = false
+	float lastTimeActionMusicPlayed = 0.0
+	int pilotMusicAttemptCount
+	int titanMusicAttemptCount
+	string currentClassMusicType
+	bool gameStateMusicEnabled = true
+}
+file
+
+void function ClMusic_Init()
+{
+	file.musicForTeam[ TEAM_IMC ] <- {}
+	file.musicForTeam[ TEAM_MILITIA ] <- {}
+	//level.debugCount <- 0
+
+	RegisterSignal( "MusicPlayed" )
+	RegisterSignal( "MusicStopped" )
+	RegisterSignal( "ForceMusicPlayed" )
+	RegisterSignal( "ForceLoopMusic" )
+	RegisterSignal( "StopLoopMusic" )
+
+	InitDefaultMusic()
+	RegisterServerVarChangeCallback( "gameState", GameStateChanged )
+}
+
+void function InitDefaultMusic()
+{
+	//Action music. These will be replaced later when the game passes the halfway progression point.
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.TITAN_ACTION_LOW_1 ] <- "Music_AngelCity_IMC_TitanAction1_LOW"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.TITAN_ACTION_LOW_2 ] <- "Music_AngelCity_IMC_TitanAction2_LOW"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PILOT_ACTION_LOW_1 ] <- "Music_AngelCity_IMC_PilotAction1_LOW"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PILOT_ACTION_LOW_2 ] <- "Music_AngelCity_IMC_PilotAction2_LOW"
+
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.TITAN_ACTION_LOW_1 ] <- "Music_AngelCity_MCOR_TitanAction1_LOW"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.TITAN_ACTION_LOW_2 ] <- "Music_AngelCity_MCOR_TitanAction2_LOW"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PILOT_ACTION_LOW_1 ] <- "Music_AngelCity_MCOR_PilotAction1_LOW"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PILOT_ACTION_LOW_2 ] <- "Music_AngelCity_MCOR_PilotAction2_LOW"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.TITAN_ACTION_HIGH_1 ] <- "Music_AngelCity_IMC_TitanAction1_HIGH"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.TITAN_ACTION_HIGH_2 ] <- "Music_AngelCity_IMC_TitanAction2_HIGH"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PILOT_ACTION_HIGH_1 ] <- "Music_AngelCity_IMC_PilotAction1_HIGH"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PILOT_ACTION_HIGH_2 ] <- "Music_AngelCity_IMC_PilotAction2_HIGH"
+
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.TITAN_ACTION_HIGH_1 ] <- "Music_AngelCity_MCOR_TitanAction1_HIGH"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.TITAN_ACTION_HIGH_2 ] <- "Music_AngelCity_MCOR_TitanAction2_HIGH"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PILOT_ACTION_HIGH_1 ] <- "Music_AngelCity_MCOR_PilotAction1_HIGH"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PILOT_ACTION_HIGH_2 ] <- "Music_AngelCity_MCOR_PilotAction2_HIGH"
+
+	//to start playing at the beginning of the 10 second countdown and playing through the intro
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_INTRO ] <- "Music_AngelCity_IMC_Opening"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_INTRO ] <- "Music_AngelCity_MCOR_Opening"
+
+	//- To be played starting at the Epilogue when your team wins
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_WIN ] <- "Music_AngelCity_IMC_Win"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_WIN ] <- "Music_AngelCity_MCOR_Win"
+
+	//To be played starting at the Epilogue when your team loses
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_LOSS ] <- "Music_AngelCity_IMC_Lose"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_LOSS ] <- "Music_AngelCity_MCOR_Lose"
+
+	//To be played starting at the Epilogue when it is a draw. Right now just use loss music
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_DRAW ] <- "Music_AngelCity_IMC_Lose"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_DRAW ] <- "Music_AngelCity_MCOR_Lose"
+
+	//To be played in with 3 minutes to go.
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_THREE_MINUTE ] <- "music_mp_freeagents_almostdone"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_THREE_MINUTE ] <- "music_mp_freeagents_almostdone"
+
+	//To be played in the last minute of the match.
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_LAST_MINUTE ] <- "music_mp_bountyhunt_lastminute"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_LAST_MINUTE ] <- "music_mp_bountyhunt_lastminute"
+
+	//To be played when Sudden Death starts
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_SUDDEN_DEATH ] <- "Music_SuddenDeath_IMC"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_SUDDEN_DEATH ] <- "Music_SuddenDeath_MCOR"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_CINEMATIC_1 ] <- "Music_AngelCity_IMC_Opening"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_CINEMATIC_1 ] <- "Music_AngelCity_MCOR_Opening"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_CINEMATIC_2 ] <- "Music_AngelCity_IMC_Win"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_CINEMATIC_2 ] <- "Music_AngelCity_MCOR_Lose"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_CINEMATIC_3 ] <- "Music_AngelCity_IMC_Opening"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_CINEMATIC_3 ] <- "Music_AngelCity_MCOR_Opening"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.LEVEL_CINEMATIC_4 ] <- "Music_AngelCity_IMC_Win"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_CINEMATIC_4 ] <- "Music_AngelCity_MCOR_Lose"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.GAMEMODE_1 ] <- "Music_MarkedForDeath_IMC_YouAreMarked"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.GAMEMODE_1 ] <- "Music_MarkedForDeath_MCOR_YouAreMarked"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.GAMEMODE_2 ] <- "Music_MarkedForDeath_IMC_YouAreMarked"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.GAMEMODE_2 ] <- "Music_MarkedForDeath_MCOR_YouAreMarked"
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PVE_OBJECTIVE_START ] <- "Music_MarkedForDeath_IMC_YouAreMarked"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PVE_OBJECTIVE_START ] <- "Music_MarkedForDeath_MCOR_YouAreMarked"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PVE_OBJECTIVE_START_FINAL ] <- "Music_MarkedForDeath_IMC_YouAreMarked"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PVE_OBJECTIVE_START_FINAL ] <- "Music_MarkedForDeath_MCOR_YouAreMarked"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.PVE_OBJECTIVE_COMPLETE ] <- "Music_MarkedForDeath_IMC_YouAreMarked"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PVE_OBJECTIVE_COMPLETE ] <- "Music_MarkedForDeath_MCOR_YouAreMarked"
+
+	//Play a different music piece based on winning/losing final round as opposed to yet another round. No difference between IMC or Milita
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.ROUND_BASED_GAME_WON ]  <- "Music_AngelCity_MCOR_Win" //Music_SuddenDeath_GameWon and Music_SuddenDeath_GameLost have flags that duck out the rest of audio. This is a problem in LH where we evac after the last round. Re-examine when server has more control of music played.
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.ROUND_BASED_GAME_WON ]  <- "Music_AngelCity_IMC_Win"
+
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.ROUND_BASED_GAME_LOST ]  <- "Music_AngelCity_MCOR_Lose"
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.ROUND_BASED_GAME_LOST ]  <- "Music_AngelCity_IMC_Lose"
+
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.BOOST_TIMED_EFFECT ]  <- "Music_MarkedForDeath_MCOR_YouAreMarked" //Temp: Using for time limited boosts
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.BOOST_TIMED_EFFECT ]  <- "Music_MarkedForDeath_IMC_YouAreMarked" //Temp: Using for time limited boosts
+
+	file.musicForTeam[ TEAM_IMC ][ eMusicPieceID.TITAN_SELECT ] <- "music_mp_fd_titanselect"
+	file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.TITAN_SELECT ] <- "music_mp_fd_titanselect"
+
+	RegisterCinematicMusic() //Register Cinematic Music by default. Probably not ideal but this late in development minimal changes are probably best
+	RegisterGameModeMusic()
+}
+
+void function RegisterCinematicMusic()
+{
+	string mapName = GetMapName()
+
+	switch ( mapName )
+	{
+		case "mp_airbase":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_airbase_IMC_Opening", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_airbase_MCOR_Opening", TEAM_MILITIA )
+
+			break
+		}
+
+		case "mp_angel_city":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_AngelCity_IMC_Opening", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_AngelCity_MCOR_Opening", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_AngelCity_IMC_Win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_AngelCity_MCOR_Win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_AngelCity_IMC_Lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_AngelCity_MCOR_Lose", TEAM_MILITIA )
+
+			break
+		}
+
+		case "mp_corporate":
+		{
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_corporate_IMC_Opening", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_corporate_Militia_Opening", TEAM_MILITIA )
+
+			break
+		}
+
+		case "mp_fracture":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_FR_Militia_Opening", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_FR_IMC_Opening", TEAM_IMC )
+
+			break
+		}
+
+		case "mp_o2":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_o2_IMC_Opening", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_o2_Militia_Opening", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_1, "Music_o2_Sacrifice", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_1, "Music_o2_Sacrifice", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "Music_o2_LateGameMusic_1", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "Music_o2_LateGameMusic_1", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_3, "Music_o2_LateGameMusic_2", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_3, "Music_o2_LateGameMusic_2", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_4, "Music_o2_LateGameMusic_3", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_4, "Music_o2_LateGameMusic_3", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_o2_Ending", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_o2_Ending", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_o2_Ending", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_o2_Ending", TEAM_IMC )
+			break
+		}
+
+		case "mp_outpost_207":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Outpost_Intro_IMC", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Outpost_Intro_MCOR", TEAM_MILITIA )
+			break
+		}
+		case "mp_colony":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Colony_IMC_Opening", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Colony_MCOR_Opening", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_Colony_IMC_Win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_Colony_MCOR_Win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_Colony_IMC_Lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_Colony_MCOR_Lose", TEAM_MILITIA )
+			break
+		}
+		case "mp_relic":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Relic_Intro_IMC", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Relic_Intro_MCOR", TEAM_MILITIA )
+			break
+		}
+		case "mp_boneyard":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Boneyard_IMC_Opening", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_Boneyard_Militia_Opening", TEAM_MILITIA )
+			break
+		}
+		case "mp_ab_funhouse":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "Music_funhouse_ninja", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_3, "Music_o2_Ending", TEAM_MILITIA )
+			break
+		}
+		case "sp_ab_ski":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "Music_funhouse_ninja", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_3, "Music_o2_Ending", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_4, "Music_Coop_WaveWon", TEAM_MILITIA )
+			break
+		}
+
+		case "sp_tremors":
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "Music_Coop_WaveWon", TEAM_MILITIA )
+			break
+		}
+	}
+}
+
+void function RegisterClassicMPMusic()
+{
+	if ( !IsMultiplayerPlaylist() )
+		return
+
+	if ( GAMETYPE == SST )
+	{
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_AngelCity_IMC_PilotAction2_HIGH", TEAM_MILITIA )
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_AngelCity_MCOR_Win", TEAM_MILITIA )
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_AngelCity_MCOR_Lose", TEAM_MILITIA )
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "Music_AngelCity_MCOR_Lose", TEAM_MILITIA )
+
+		return
+	}
+
+	RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_ClassicMP_IMC_Opening", TEAM_IMC )
+	RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "Music_ClassicMP_MCOR_Opening", TEAM_MILITIA )
+
+	FlagWait( "EntitiesDidLoad" ) //Have to do this because the nv that determines if RoundBased or not might not get set yet
+
+	if ( IsRoundBased() )
+	{
+		//thread RandomizeClassicMPRoundBasedWinLoss()
+		//return
+	}
+	else
+	{
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_AngelCity_IMC_Win", TEAM_IMC )
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "Music_AngelCity_MCOR_Win", TEAM_MILITIA )
+
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_AngelCity_IMC_Lose", TEAM_IMC )
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "Music_AngelCity_MCOR_Lose", TEAM_MILITIA )
+
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "Music_AngelCity_IMC_Lose", TEAM_IMC )
+		RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "Music_AngelCity_MCOR_Lose", TEAM_MILITIA )
+	}
+}
+
+void function RegisterGameModeMusic()
+{
+	switch ( GAMETYPE )
+	{
+		case ATTRITION:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_bountyhunt_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_bountyhunt_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_bountyhunt_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_bountyhunt_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_bountyhunt_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_bountyhunt_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_bountyhunt_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_bountyhunt_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_mcor_newbounty", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_mcor_newbounty", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_2, "music_mp_imc_wavecomplete", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_2, "music_mp_imc_wavecomplete", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_bountyhunt_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_bountyhunt_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case CAPTURE_POINT:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_hardpoint_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_hardpoint_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_hardpoint_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_hardpoint_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_hardpoint_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_hardpoint_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_hardpoint_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_hardpoint_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_hardpoint_almostdone", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_hardpoint_almostdone", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_hardpoint_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_hardpoint_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case MARKED_FOR_DEATH:
+		case MARKED_FOR_DEATH_PRO:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "Music_MarkedForDeath_IMC_YouAreMarked", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "Music_MarkedForDeath_MCOR_YouAreMarked", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_mfd_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_mfd_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_mfd_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_mfd_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_mfd_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_mfd_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_mfd_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_mfd_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_mfd_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_mfd_lastminute", TEAM_MILITIA )
+			break
+		}
+
+		case SST:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "Music_AngelCity_IMC_PilotAction2_HIGH", TEAM_MILITIA )
+			break
+		}
+
+		case FORT_WAR:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_titanwar_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_titanwar_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_titanwar_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_titanwar_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_titanwar_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_titanwar_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_titanwar_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_titanwar_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_imc_titanwar_losing", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_mcor_titanwar_losing", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_2, "music_mp_imc_titanwar_winning", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_2, "music_mp_mcor_titanwar_winning", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_1, "music_mp_titanwar_losing_enroute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_1, "music_mp_titanwar_losing_enroute", TEAM_MILITIA )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "music_mp_titanwar_winning_enroute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_CINEMATIC_2, "music_mp_titanwar_winning_enroute", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_titanwar_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_titanwar_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case CAPTURE_THE_FLAG:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_ctf_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_ctf_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_ctf_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_ctf_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_ctf_halftime_losing", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_ctf_halftime_losing", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_SUDDEN_DEATH, "music_mp_ctf_draw", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_SUDDEN_DEATH, "music_mp_ctf_draw", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_ctf_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_ctf_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_ctf_halftime_winning", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_ctf_halftime_winning", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_ctf_halftime_losing", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_ctf_halftime_losing", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_ctf_flag_4", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_ctf_flag_4", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_ctf_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_ctf_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case AI_TDM:
+		case TITAN_BRAWL:
+		case TEAM_DEATHMATCH:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_pilothunt_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_pilothunt_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_pilothunt_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_pilothunt_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_pilothunt_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_pilothunt_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_pilothunt_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_pilothunt_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_pilothunt_almostdone", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_pilothunt_almostdone", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_pilothunt_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_pilothunt_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case FFA:
+		case FREE_AGENCY:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_freeagents_intro", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_freeagents_intro", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_freeagents_outro_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_freeagents_outro_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_freeagents_outro_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_freeagents_outro_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_freeagents_outro_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_freeagents_outro_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_THREE_MINUTE, "music_mp_freeagents_almostdone", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_THREE_MINUTE, "music_mp_freeagents_almostdone", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_freeagents_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_freeagents_lastminute", TEAM_MILITIA )
+
+			break
+		}
+		case LTS_BOMB:
+		case LAST_TITAN_STANDING:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_lts_intro_countdown", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_lts_intro_countdown", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_lts_outro_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_lts_outro_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_lts_outro_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_lts_outro_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_lts_outro_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_lts_outro_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_lts_round_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_lts_round_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_lts_round_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_lts_round_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_lts_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_lts_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case PILOT_SKIRMISH:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_pvp_intro_flyin", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_pvp_intro_flyin", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_pvp_epilogue_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_pvp_epilogue_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_pvp_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_pvp_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_pvp_epilogue_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_pvp_epilogue_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_pvp_almostdone", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.GAMEMODE_1, "music_mp_pvp_almostdone", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_pvp_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_pvp_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case COLISEUM:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_coliseum_intro", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_coliseum_intro", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_coliseum_round_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_coliseum_round_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_coliseum_round_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_coliseum_round_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_coliseum_round_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_coliseum_round_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_coliseum_round_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_coliseum_round_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_coliseum_round_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_coliseum_round_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_coliseum_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_coliseum_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case SPEEDBALL:
+		{
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_speedball_intro", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_INTRO, "music_mp_speedball_intro", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_speedball_game_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_speedball_game_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_speedball_round_win", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_WON, "music_mp_speedball_round_win", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_speedball_round_draw", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_DRAW, "music_mp_speedball_round_draw", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_speedball_round_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_speedball_round_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_speedball_game_lose", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_speedball_game_lose", TEAM_MILITIA )
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_coliseum_lastminute", TEAM_IMC )
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LAST_MINUTE, "music_mp_coliseum_lastminute", TEAM_MILITIA )
+
+			break
+		}
+
+		case FD:
+		{
+			//Only Team militia in FD
+			//Note that win/loss music is played through FD's gamestatechange callback
+
+			//Also note that for the most part it doesn't matter what music we register here since gamemode fd script will re-register them based on whether we're using classic music or not
+
+
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_WIN, "music_mp_fd_victory", TEAM_MILITIA ) //Not using eMusicPieceID.COOP_GAMEWON
+			RegisterLevelMusicForTeam( eMusicPieceID.LEVEL_LOSS, "music_mp_fd_defeat", TEAM_MILITIA ) //Not using eMusicPieceID.COOP_GAMELOST
+			RegisterLevelMusicForTeam( eMusicPieceID.ROUND_BASED_GAME_LOST, "music_mp_fd_wavefailed", TEAM_MILITIA ) //Not using eMusicPieceID.COOP_WAVELOST
+
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_WAVEWON ]  <- "music_mp_fd_wavecleared"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_WAITINGFORWAVE ]  <- "music_mp_fd_betweenwaves"
+
+			/* Register appropriate difficulty Music under LEVEL_INTRO instead to make it play through existing means
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_INTROMUSIC_EASY ]  <- "music_mp_fd_intro_easy"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_INTROMUSIC_MEDIUM ]  <- "music_mp_fd_intro_medium"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_INTROMUSIC_HARD ]  <- "music_mp_fd_intro_hard"
+			*/
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_EARLYWAVE_BEGIN ] <- "music_mp_fd_introwave"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_MIDDLEWAVE_BEGIN ] <- "music_mp_fd_midwave"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.COOP_FINALWAVE_BEGIN ] <- "music_mp_fd_finalwave"
+
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PVE_OBJECTIVE_START ] <- "music_mp_fd_postgame_win"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.PVE_OBJECTIVE_COMPLETE ] <- "music_mp_fd_postgame_loss"
+
+			break
+		}
+
+
+		case PVE_SANDBOX:
+		{
+			RegisterLevelMusicForBothTeams( eMusicPieceID.LEVEL_INTRO,					"music_beacon_8a_jumpingsuccess" )
+			RegisterLevelMusicForBothTeams( eMusicPieceID.PVE_OBJECTIVE_START,			"music_mp_coliseum_intro" )
+			RegisterLevelMusicForBothTeams( eMusicPieceID.PVE_OBJECTIVE_START_FINAL,	"music_mp_coliseum_lastminute" )
+			RegisterLevelMusicForBothTeams( eMusicPieceID.PVE_OBJECTIVE_COMPLETE,		"music_mp_coliseum_round_win" )
+		}
+		break
+
+		case GAMEMODE_SP:
+		{
+			// TEMP tracks until Erik works on it
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_PROTO1_BASE ] 				<- "Music_Boneyard_Militia_Opening"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_PROTO1_INTRO ] 			<- "Music_Boneyard_IMC_Opening"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_NPCSTATE_IDLE ] 			<- "Music_SP_NPCState_Idle"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_NPCSTATE_ALERT ] 			<- "Music_SP_NPCState_Alert"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_NPCSTATE_COMBAT ] 			<- "Music_SP_NPCState_Combat"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_PROTO1_TITANBOOT_COMBAT ] 	<- "Music_SP_Proto1_TitanBoot"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_PROTO1_EXFIL ] 			<- "Music_SP_Proto1_Exfil"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_PROTO1_DEFENDLZ ] 			<- "Music_SP_Proto1_DefendLZ"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.LEVEL_CINEMATIC_1 ] 			<- "Music_o2_Militia_Opening"
+			file.musicForTeam[ TEAM_MILITIA ][ eMusicPieceID.SP_PROTO1_OUTRO ] 			<- "Music_SP_Proto1_Outro"
+			break
+		}
+
+		default:
+		{
+			break
+		}
+	}
+}
+
+void function RegisterLevelMusicForTeam( int musicPieceID, string soundAlias, int team )
+{
+	file.musicForTeam[ team ][ musicPieceID ] = soundAlias
+}
+
+void function RegisterLevelMusicForBothTeams( int musicPieceID, string soundAlias )
+{
+	file.musicForTeam[ TEAM_IMC ][ musicPieceID ] = soundAlias
+	file.musicForTeam[ TEAM_MILITIA ][ musicPieceID ] = soundAlias
+}
+
+bool function IsForcedMusicOnly()
+{
+	return file.forcedMusicOnly
+}
+
+void function GameStateChanged()
+{
+	if ( !file.musicEnabled ) //So music can be selectively turned off per level
+		return
+
+	if ( file.gameStateMusicEnabled == false )
+	{
+		//printt( "GameStateMusicEnabled Set to false, returning" )
+		return
+	}
+
+	switch ( GetGameState() )
+	{
+		//****** Watch out for using gameteam score. Check to see after epilogue if score still increases
+		case eGameState.Prematch:
+			thread ForcePlayMusicToCompletion( eMusicPieceID.LEVEL_INTRO )
+			break
+
+		case eGameState.SuddenDeath:
+			thread ForcePlayMusicToCompletion( eMusicPieceID.LEVEL_SUDDEN_DEATH )
+			break
+
+		case eGameState.SwitchingSides:
+			entity player = GetLocalClientPlayer()
+			int playerTeam = GetTeamForMusic( player )
+
+			int milScore = GameRules_GetTeamScore2( TEAM_MILITIA )
+			int imcScore = GameRules_GetTeamScore2( TEAM_IMC )
+
+			int winningTeam = TEAM_UNASSIGNED
+			if ( milScore > imcScore )
+				winningTeam = TEAM_MILITIA
+			else if ( imcScore > milScore )
+				winningTeam = TEAM_IMC
+
+			thread PlayHalfTimeMusic( playerTeam, winningTeam )
+			break
+
+		case eGameState.WinnerDetermined:
+			entity player = GetLocalClientPlayer()
+			int playerTeam = GetTeamForMusic( player )
+
+			int winningTeam = expect int( level.nv.winningTeam )
+
+			thread PlayWinnerDeterminedMusic( playerTeam, winningTeam )
+
+			//if ( IsRoundBased() )
+			//	thread RandomizeClassicMPRoundBasedWinLoss() // Randomize music for next round}
+
+			break
+	}
+}
+
+void function PlayWinnerDeterminedMusic( int playerTeam, int winningTeam )
+{
+	int winningMusic
+	int losingMusic
+	int drawingMusic
+
+	/*printt( "roundScoreLimitComplete: " + level.nv.roundScoreLimitComplete )
+	printt( "HasRoundScoreLimitBeenReached(): " + HasRoundScoreLimitBeenReached() )*/
+
+	if ( IsRoundBased() && !HasRoundScoreLimitBeenReached() )
+	{
+		winningMusic = eMusicPieceID.ROUND_BASED_GAME_WON
+		losingMusic = eMusicPieceID.ROUND_BASED_GAME_LOST
+		drawingMusic = eMusicPieceID.LEVEL_DRAW
+	}
+	else
+	{
+		winningMusic = eMusicPieceID.LEVEL_WIN
+		losingMusic = eMusicPieceID.LEVEL_LOSS
+		drawingMusic = eMusicPieceID.LEVEL_DRAW
+	}
+
+	if ( playerTeam == winningTeam )
+		thread ForcePlayMusicToCompletion( winningMusic )
+	else if ( winningTeam == TEAM_UNASSIGNED )
+		thread ForcePlayMusicToCompletion( drawingMusic )
+	else
+		thread ForcePlayMusicToCompletion( losingMusic )
+}
+
+void function PlayHalfTimeMusic( int playerTeam, int winningTeam )
+{
+	/*printt( "roundScoreLimitComplete: " + level.nv.roundScoreLimitComplete )
+	printt( "HasRoundScoreLimitBeenReached(): " + HasRoundScoreLimitBeenReached() )*/
+
+	int winningMusic = eMusicPieceID.ROUND_BASED_GAME_WON
+	int losingMusic = eMusicPieceID.ROUND_BASED_GAME_LOST
+	int drawingMusic = eMusicPieceID.ROUND_BASED_GAME_LOST
+
+	if ( playerTeam ==  winningTeam )
+		thread ForcePlayMusicToCompletion( winningMusic )
+	else if ( winningTeam == TEAM_UNASSIGNED )
+		thread ForcePlayMusicToCompletion( drawingMusic )
+	else
+		thread ForcePlayMusicToCompletion( losingMusic )
+}
+
+void function ServerCallback_PlayTeamMusicEvent( int musicPieceID, float timeMusicStarted, bool shouldSeek )
+{
+	if ( shouldSeek == false )
+	{
+		thread ForcePlayMusicToCompletion( musicPieceID, 0 )
+		return
+	}
+
+	float seekTime = Time() - timeMusicStarted
+	if ( seekTime < 0  ) //Defensive fix. Couldn't find repro.
+		seekTime = 0
+
+	//Handle case where we join late after the intro music has finished playing
+	if ( shouldSeek == true && IntroMusicHasFinishedPlaying( musicPieceID, timeMusicStarted, seekTime ) )
+	{
+		delaythread ( 1.0 ) PlayActionMusic() //Delaythread to give rest of game time to init itself correctly when we join late
+	}
+	else
+	{
+		thread ForcePlayMusicToCompletion( musicPieceID, seekTime )
+	}
+}
+
+void function ServerCallback_PlayMusicToCompletion( int musicPieceID )
+{
+	thread ForcePlayMusicToCompletion( musicPieceID, 0 )
+	return
+}
+
+void function ServerCallback_PlayMusic( int musicPieceID )
+{
+	PlayMusic( musicPieceID )
+	return
+}
+
+bool function IntroMusicHasFinishedPlaying( int musicPieceID, float timeMusicStarted, float seekTime )
+{
+	//Warning: This will not work correctly for soundAliases for music with multiple wav files
+	string soundAlias = GetSoundAliasFromMusicPieceID( musicPieceID )
+	float timeLeftForMusicToPlay = GetSoundDuration( soundAlias ) - seekTime
+
+	if ( timeLeftForMusicToPlay <= 0 )
+	{
+		//printt( "Intro music should have finished, start action music" )
+		return true
+	}
+
+	return false
+}
+
+void function SetForcedMusicOnly( bool value )
+{
+	file.forcedMusicOnly = value
+}
+
+void function PlayMusic( int musicPieceID, float seek = 0.0 )
+{
+	if ( IsForcedMusicOnly() )
+	{
+		//printt( "Forced Music is on, not playing music" )
+		return
+	}
+
+	PlayMusic_Internal( musicPieceID, seek )
+}
+
+void function ServerCallback_ForcePlayMusic( int musicID, bool doForcedLoop = false )
+{
+	if ( doForcedLoop )
+		thread ForceLoopMusic_DEPRECATED( musicID )
+	else
+		thread ForcePlayMusic( musicID )
+}
+
+//Returns null or a handle to sound played. can waitsignal on sound so you know when it ends
+var function ForcePlayMusic( int musicPieceID, float seek = 0.0 )
+{
+	clGlobal.levelEnt.Signal( "ForceMusicPlayed" )
+	file.lastTimeActionMusicPlayed = 0 // Just to get past the PlayActionMusic debounce check
+	return PlayMusic_Internal( musicPieceID, seek )
+}
+
+void function ForcePlayMusicToCompletion( int musicPieceID, float seek = 0.0 )
+{
+	//Warning: This will not work correctly for soundAliases for music with multiple wav files
+	string soundAlias = GetSoundAliasFromMusicPieceID( musicPieceID )
+
+	if ( file.currentMusicPlaying == soundAlias )
+	{
+		//printt( "current music already playing, returning" )
+		return
+	}
+
+	entity player = GetLocalClientPlayer()
+
+	SetForcedMusicOnly( true )
+	var handleToSoundEmitted = ForcePlayMusic( musicPieceID, seek )
+
+	if ( handleToSoundEmitted == null )
+	{
+		//printt ("No length of music, returning from ForcePlayMusicToCompletion" )
+		SetForcedMusicOnly( false )
+		return
+	}
+
+	clGlobal.levelEnt.EndSignal( "ForceMusicPlayed" )
+	clGlobal.levelEnt.EndSignal( "ForceLoopMusic" )
+	clGlobal.levelEnt.EndSignal( "MusicStopped" )
+	clGlobal.levelEnt.EndSignal( "StopLoopMusic" )
+
+	EndSignal( handleToSoundEmitted, "OnSoundFinished" )
+
+	OnThreadEnd(
+	function() : (  )
+		{
+			SetForcedMusicOnly( false )
+		}
+	)
+
+	WaitForever()
+}
+
+// Returns null or handle to sound emitted. Can use handle to wait on sound completion.
+var function PlayMusic_Internal( int musicPieceID, float seek = 0.0 )
+{
+	if ( !file.musicEnabled ) //No music ever plays when musicEnabled is set to false
+		return null
+
+	entity player = GetLocalClientPlayer()
+	string soundAlias = GetSoundAliasFromMusicPieceID( musicPieceID )
+
+	if ( file.currentMusicPlaying == soundAlias )
+		return null
+
+	//printt( "Trying to play music: " + soundAlias )
+	if ( file.currentMusicPlaying != "" )
+	{
+		//printt( "Stopping current sound: " + file.currentMusicPlaying )
+		FadeOutSoundOnEntity( player, file.currentMusicPlaying, DEFAULT_FADE_TIME )
+	}
+
+	var handle = EmitSoundOnEntityWithSeek( player, soundAlias, seek )
+	if ( IsWatchingReplay() )
+		SetPlayThroughKillReplay( handle ) //All sounds started during kill replay will be killed on exiting kill replay unless specifically set to SetPlayThroughKillReplay()
+
+	file.currentMusicPlaying = soundAlias
+
+	return handle
+}
+
+bool function IsMusicTrackPlaying( int musicPieceID )
+{
+	string soundAlias = GetSoundAliasFromMusicPieceID( musicPieceID )
+	return ( file.currentMusicPlaying == soundAlias )
+}
+
+void function PlayNextActionMusicWhenDone( float lengthOfMusic )
+{
+	//printt( "Signalling music played" )
+	clGlobal.levelEnt.Signal( "MusicPlayed" )
+	clGlobal.levelEnt.EndSignal( "MusicPlayed" )
+	clGlobal.levelEnt.EndSignal( "MusicStopped" )
+
+	/*printt( "level.debugCount: " + level.debugCount )
+	local debugCount = level.debugCount
+
+	OnThreadEnd(
+		function() : ( debugCount )
+		{
+			printt( "Play NextActionMusicWhenDone ended with debugCount:" + debugCount )
+		}
+	)
+
+	++level.debugCount*/
+
+	wait ( lengthOfMusic + DEFAULT_MUSIC_GAP_TIME )
+
+	//JFS. When a player goes into XBox menus the audio is stopped, but the client script is not. This can result in music pieces overlapping. This fix results in music stopping without finishing, but at least it doesn't overlap
+	entity player = GetLocalClientPlayer()
+	if ( !IsValid( player ) )
+		return
+
+	if ( file.currentMusicPlaying != "" )
+		FadeOutSoundOnEntity( player, file.currentMusicPlaying, DEFAULT_FADE_TIME )
+
+	//printt( "Setting currentClassMusicType to blank" )
+	file.currentClassMusicType = ""
+	file.currentMusicPlaying = ""
+
+	thread PlayActionMusic()
+}
+
+void function LoopLobbyMusic_Ext() //Separate function so LoopLobbyMusic() is only called in one place, and so LoopLobbyMusic_Ext() is only called in one place
+{
+	thread LoopLobbyMusic()
+}
+
+void function OnSoundClassicMusicChanged()
+{
+	if ( IsLobby() )
+	{
+		thread LoopLobbyMusic_Ext() //Stops and replays appropriate lobby music
+	}
+	else
+	{
+		if ( GameRules_GetGameMode() == FD )
+			FD_InitMusicSet() //Doesn't stop and replay appropriate music. (Too many pieces are timing specific, e.g. supposed to play at the start of a wave and timed specifically)
+	}
+
+}
+
+void function LoopLobbyMusic()
+{
+	string soundAlias
+
+	bool classicMusicAvailable = !IsItemLocked( GetLocalClientPlayer(), "classic_music" )
+
+	if ( GetConVarBool( "sound_classic_music" ) && classicMusicAvailable )
+		soundAlias = "music_lobby_ambient_classic"
+	else
+		soundAlias = "music_lobby_ambient"
+
+	if ( file.currentMusicPlaying == soundAlias )
+		return
+
+	clGlobal.levelEnt.Signal( "MusicPlayed" )
+	clGlobal.levelEnt.EndSignal( "MusicPlayed" )
+	clGlobal.levelEnt.EndSignal( "MusicStopped" )
+
+	entity player = GetLocalClientPlayer()
+	OnThreadEnd(
+	function() : ( player )
+		{
+			if ( IsValid( player ) && file.currentMusicPlaying != "" )
+				FadeOutSoundOnEntity( player, file.currentMusicPlaying, DEFAULT_FADE_TIME )
+		}
+	)
+
+	file.currentMusicPlaying = soundAlias
+
+	while ( true )
+	{
+		wait 2.0 //Hack. Make music restarting in lobbies slightly less bad.
+
+		player = GetLocalClientPlayer()
+		if ( !IsValid( player ) )
+			return
+
+		var soundHandle = EmitSoundOnEntity( player, soundAlias )
+
+		WaitSignal( soundHandle, "OnSoundFinished" )
+	}
+}
+
+//DEPRECATED: Should mark music as looping in miles and let that play. Just a normal ForcePlayMusic() etc call will work and make it loop endlessly
+void function ForceLoopMusic_DEPRECATED( int musicPieceID ) //Needs a corresponding call to StopLoopMusic_DEPRECATED() or StopMusic() to actually stop the music. Other ForcePlayMusic calls will play and force the loop to start over without stopping the loop. Not ideal, but we can live with it.
+{
+	//Warning: This will not work correctly for soundAliases for music with multiple wav files
+	string soundAlias = GetSoundAliasFromMusicPieceID( musicPieceID )
+
+	clGlobal.levelEnt.Signal( "ForceLoopMusic" )
+	clGlobal.levelEnt.EndSignal( "ForceLoopMusic" )
+	clGlobal.levelEnt.EndSignal( "MusicStopped" )
+	clGlobal.levelEnt.EndSignal( "StopLoopMusic" )
+
+	OnThreadEnd(
+		function() : (  )
+		{
+			StopLoopMusic_DEPRECATED()
+		}
+	)
+
+	while ( true )
+	{
+		//printt( "Pre ForcePlayMusicToCompletion" )
+		file.currentLoopingMusic = soundAlias
+		waitthread ForcePlayMusicToCompletion( musicPieceID )
+		if ( file.currentMusicPlaying != file.currentLoopingMusic ) //Check to see if we got interrupted by other forcemusic calls
+			return
+		file.currentMusicPlaying = "" //Somewhat of a hack to get the same music to loop immediately.
+		//printt( "Post ForcePlayMusicToCompletion" )
+	}
+}
+
+void function StopLoopMusic_DEPRECATED()
+{
+	if ( file.currentLoopingMusic != file.currentMusicPlaying )
+	{
+		//printt( "No current looping music!" )
+		file.currentLoopingMusic = ""
+		return
+	}
+
+	clGlobal.levelEnt.Signal( "StopLoopMusic" )
+	StopMusic()
+	//PlayActionMusic() //Responsibility of calling script to call PlayActionMusic() if they need it
+}
+
+void function PlayActionMusic()
+{
+	if ( !file.musicEnabled ) //So music isn't turned on by default for all levels
+	{
+		//printt( "Music not enabled, returning" )
+		return
+	}
+
+	if ( file.classMusicEnabled == false )
+	{
+		//printt( "Class Music not enabled, returning" )
+		return
+	}
+
+	if ( IsWatchingReplay() )
+		return
+
+	int currentGameState = GetGameState()
+
+	//Assuming we don't ever add another game state that we want action music to play in
+	if ( currentGameState != eGameState.Playing )
+	{
+		//printt( "current game state is " + currentGameState + " != playing " )
+		return
+	}
+
+	if ( !EnoughTimePassedForActionMusic() )
+	{
+		//printt( "Not enough time passed for action music!" )
+		return
+	}
+
+	entity player = GetLocalClientPlayer()
+
+	if ( IsForcedMusicOnly() )
+	{
+		//printt( "Forced Music is on, not playing action music" )
+		return
+	}
+
+	if ( IsMultiplayerPlaylist() && GetMusicReducedSetting() )
+		return
+
+	string playerClass = player.GetPlayerClass()
+
+	if ( playerClass == level.pilotClass )
+		DecidePilotMusicToPlay()
+	else if ( playerClass == "titan" )
+		DecideTitanMusicToPlay()
+}
+
+bool function EnoughTimePassedForActionMusic()
+{
+	if ( !file.lastTimeActionMusicPlayed )
+		return true
+
+	return ( Time() - file.lastTimeActionMusicPlayed >= ACTION_MUSIC_DEBOUNCE_TIME )
+}
+
+string function GetSoundAliasFromMusicPieceID( int musicPieceID )
+{
+	entity player = GetLocalClientPlayer()
+	int team = GetTeamForMusic( player )
+	return file.musicForTeam[team][musicPieceID]
+}
+
+void function StopMusic( float fadeOutTime = DEFAULT_FADE_TIME ) //Stops current music. Also stops automatic action music playing until another piece of music is played manually
+{
+	//No current music playing, return
+	if ( file.currentMusicPlaying == "" )
+		return
+
+	entity player = GetLocalClientPlayer()
+
+	//printt( "Stopping current music for player: " + player )
+
+	FadeOutSoundOnEntity( player, file.currentMusicPlaying, fadeOutTime )
+
+	file.currentMusicPlaying = ""
+	file.currentLoopingMusic = ""
+	file.currentClassMusicType = ""
+	file.lastTimeActionMusicPlayed = 0 // Reset the PlayActionMusic debounce check
+
+	SetForcedMusicOnly( false )
+
+	clGlobal.levelEnt.Signal( "MusicStopped" )
+}
+
+//Very similar to DecidePilotMusicToPlay
+void function DecideTitanMusicToPlay()
+{
+	//printt( "file.currentClassMusicType: " + file.currentClassMusicType )
+	if ( file.currentClassMusicType == "titan" )  // Don't try to switch music if we're already playing titan music
+		return
+
+	++file.titanMusicAttemptCount
+
+	if ( level.nv.matchProgress <  MATCH_PROGRESS_ACTION_MUSIC_SHIFT_THRESHOLD )
+	{
+		if ( file.titanMusicAttemptCount % 2  == 0 )
+			PlayMusic( eMusicPieceID.TITAN_ACTION_LOW_2 )
+		else
+			PlayMusic( eMusicPieceID.TITAN_ACTION_LOW_1 )
+	}
+	else
+	{
+		if ( file.titanMusicAttemptCount % 2  == 0 )
+			PlayMusic( eMusicPieceID.TITAN_ACTION_HIGH_2 )
+		else
+			PlayMusic( eMusicPieceID.TITAN_ACTION_HIGH_1 )
+	}
+	//printt( "Setting file.currentClassMusicType to titan" )
+
+	file.currentClassMusicType = "titan"
+
+	file.lastTimeActionMusicPlayed = Time()
+}
+
+//Very similar to DecideTitanMusicToPlay
+void function DecidePilotMusicToPlay()
+{
+	//printt( "file.currentClassMusicType: " + file.currentClassMusicType )
+	if ( file.currentClassMusicType == "pilot" ) //Don't try to switch music if we're already playing pilot music
+		return
+
+	++file.pilotMusicAttemptCount
+
+	if ( level.nv.matchProgress <  MATCH_PROGRESS_ACTION_MUSIC_SHIFT_THRESHOLD )
+	{
+		if ( file.pilotMusicAttemptCount % 2  == 0 )
+			PlayMusic( eMusicPieceID.PILOT_ACTION_LOW_2 )
+		else
+			PlayMusic( eMusicPieceID.PILOT_ACTION_LOW_1 )
+	}
+	else
+	{
+		if ( file.pilotMusicAttemptCount % 2  == 0 )
+			PlayMusic( eMusicPieceID.PILOT_ACTION_HIGH_2 )
+		else
+			PlayMusic( eMusicPieceID.PILOT_ACTION_HIGH_1 )
+	}
+
+	//printt( "Setting file.currentClassMusicType to pilot" )
+
+	file.currentClassMusicType = "pilot"
+
+	file.lastTimeActionMusicPlayed = Time()
+}
+
+void function SetClassMusicEnabled( bool value )
+{
+	file.classMusicEnabled = value
+}
+
+bool function GetClassMusicEnabled()
+{
+	return file.classMusicEnabled
+}
+
+void function SetGameStateMusicEnabled( bool value )
+{
+	file.gameStateMusicEnabled = value
+}
+
+bool function GetGameStateMusicEnabled()
+{
+	return file.gameStateMusicEnabled
+}
+
+bool function GetMusicEnabled()
+{
+	return file.musicEnabled
+}
+
+void function SetMusicEnabled( bool value )
+{
+	file.musicEnabled = value
+}

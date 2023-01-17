@@ -1,0 +1,2 @@
+SquirrelStandalone.exe "mods"
+pause
