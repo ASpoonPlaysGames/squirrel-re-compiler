@@ -1,0 +1,272 @@
+global function ServerCallback_PlayFactionDialogue
+global function ServerCallback_ForcePlayFactionDialogue
+global function GenerateFactionDialogueAlias
+global function PlayFactionDialogueOnLocalClientPlayer
+global function ServerCallback_SpawnFactionCommanderInDropship
+
+global function IsFactionLeaderOverriden
+global function GetOverrideFactionLeader
+global function SetOverrideFactionLeader
+global function ClearOverrideFactionLeader
+
+global struct OverrideFactionLeaderStruct //Note that this is meant for game mode specific faction leader overrides like Frontier Defence. The alternative for this is to make an actual faction but have a column that specifies which game mode it is overriden for, etc, but then you also have to do work to make it not show up as a faction you can pick, make sure you earn the faction XP for the faction you had before, add persistence data, etc.
+{
+	string dialoguePrefix
+	string factionName
+	asset factionLogo
+	bool useWaveForm
+	void functionref( int shipEHandle, float dropshipSpawnTime ) dropshipIntroOverride
+}
+
+struct
+{
+	#if DEV
+		int factionLeaderAnimIndex = -1
+		bool forceEasterEgg = false
+	#endif
+	bool factionLeaderOverriden = false
+	OverrideFactionLeaderStruct& overrideFactionLeaderData
+}
+file
+
+#if DEV
+	global function Dev_SetFactionLeaderAnimIndex
+	global function Dev_ForceEasterEgg
+#endif
+
+string function GenerateFactionDialogueAlias( entity player, string conversationSuffix  )
+{
+	string factionPrefix
+	if ( IsFactionLeaderOverriden() )
+	{
+	 	factionPrefix = file.overrideFactionLeaderData.dialoguePrefix //Mainly for Frontier Defence, where it has its own announcer. Don't want to override GetFactionChoice() because that's used by FactionXP etc.
+	}
+	else
+	{
+		string factionChoice = GetFactionChoice( player )
+		factionPrefix = factionLeaderData[ factionChoice ].dialoguePrefix
+	}
+
+	string result = "diag_" + factionPrefix + "_" + conversationSuffix
+	return result
+
+}
+
+void function ServerCallback_PlayFactionDialogue( int conversationIndex  )
+{
+	string conversationName = GetConversationName( conversationIndex )
+
+	PlayFactionDialogueOnLocalClientPlayer( conversationName )
+}
+
+void function ServerCallback_ForcePlayFactionDialogue( int conversationIndex  )
+{
+	string conversationName = GetConversationName( conversationIndex )
+
+	ForcePlayFactionDialogueOnLocalClientPlayer( conversationName )
+}
+
+void function PlayFactionDialogueOnLocalClientPlayer( string conversationName )
+{
+	bool printDebug = GetDialogueDebugLevel() > 0
+
+	if ( printDebug )
+		printt( "PlayFactionDialogueOnLocalClientPlayer: " + conversationName )
+
+	entity listeningPlayer = GetLocalClientPlayer()
+
+	if ( !ShouldPlayFactionDialogue( conversationName, listeningPlayer ) )
+		return
+
+	string faction = GetFactionChoice( listeningPlayer )
+	if ( !ConversationEnabledForFaction( faction, conversationName ) )
+		return
+
+	//Check for priority. TODO: Cancel existing conversations if needed
+	int priority = GetConversationPriority( conversationName )
+	//Generate alias from playerEHandle and number of altAliases we have
+	string soundAlias = GenerateFactionDialogueAlias( listeningPlayer, conversationName  )
+
+	bool useWaveForm = ShouldUseWaveForm( faction )
+	string waveformName = ""
+	if ( useWaveForm )
+		waveformName = GetFactionCharacterName( faction )
+	PlayAnnouncerLineThroughDeathWithPriority( conversationName, soundAlias, priority, waveformName )
+}
+
+void function ForcePlayFactionDialogueOnLocalClientPlayer( string conversationName )
+{
+	bool printDebug = GetDialogueDebugLevel() > 0
+
+	if ( printDebug )
+		printt( "ForcePlayFactionDialogueOnLocalClientPlayer: " + conversationName )
+
+	entity listeningPlayer = GetLocalClientPlayer()
+
+	string faction = GetFactionChoice( listeningPlayer )
+	if ( !ConversationEnabledForFaction( faction, conversationName ) )
+		return
+
+	//Check for priority. TODO: Cancel existing conversations if needed
+	int priority =   GetConversationPriority( conversationName )
+	//Generate alias from playerEHandle and number of altAliases we have
+	string soundAlias = GenerateFactionDialogueAlias( listeningPlayer, conversationName  )
+
+	bool useWaveForm = ShouldUseWaveForm( faction )
+	string waveformName = ""
+	if ( useWaveForm )
+		waveformName = GetFactionCharacterName( faction )
+	PlayAnnouncerLineThroughDeathWithPriority( conversationName, soundAlias, priority, waveformName )
+}
+
+void function ServerCallback_SpawnFactionCommanderInDropship( int shipEHandle, float dropshipSpawnTime ) //Awkward that it's here, could be in cl_classic_mp.nut but it uses data that is read in from sh_faction_dialogue.nut
+{
+	if ( IsFactionLeaderOverriden() )
+	{
+		thread file.overrideFactionLeaderData.dropshipIntroOverride( shipEHandle, dropshipSpawnTime )
+	}
+	else
+	{
+		thread ServerCallback_SpawnFactionCommanderInDropship_threaded( shipEHandle, dropshipSpawnTime )
+	}
+
+}
+
+void function ServerCallback_SpawnFactionCommanderInDropship_threaded( int shipEHandle, float dropshipSpawnTime ) //Awkward that it's here, could be in cl_classic_mp.nut but it uses data that is read in from sh_faction_dialogue.nut
+{
+	entity dropShip = GetEntityFromEncodedEHandle( shipEHandle )
+	entity localViewPlayer = GetLocalViewPlayer()
+	string faction = GetFactionChoice( localViewPlayer )
+	FactionLeaderDataStruct factionLeaderInfo = factionLeaderData[ faction ]
+
+	entity factionLeader = CreatePropDynamic( GetFactionModel( faction ) )
+	factionLeader.SetParent( dropShip, "ORIGIN" )
+	factionLeader.MarkAsNonMovingAttachment()
+	factionLeader.SetSkin( GetFactionModelSkin( faction ) )
+
+	entity prop = null
+	if ( factionLeaderInfo.propModelName != $"" )
+	{
+		prop = CreatePropDynamic( factionLeaderInfo.propModelName )
+		prop.MarkAsNonMovingAttachment()
+		prop.SetParent( factionLeader, factionLeaderInfo.propAttachment )
+	}
+
+	array<string> dropshipAnimList = factionLeaderInfo.dropshipAnimList
+	bool useEasterEgg = RandomFloat( 100 ) <= 1.0
+	#if DEV
+	useEasterEgg = useEasterEgg || file.forceEasterEgg
+	#endif
+	if ( factionLeaderInfo.easterEggDropshipAnimList.len() > 0 && useEasterEgg )
+	{
+		dropshipAnimList = factionLeaderInfo.easterEggDropshipAnimList
+	}
+	/*foreach( dropshipAnim in dropshipAnimList )
+	{
+		printt( "dropshipAnim: " + dropshipAnim )
+	}
+	*/
+
+	string dropshipAnim = dropshipAnimList.getrandom()
+	#if DEV
+		if ( file.factionLeaderAnimIndex > -1 )
+		{
+			int numberOfAnims = dropshipAnimList.len()
+			Assert( numberOfAnims > 0 )
+			if ( ( numberOfAnims - 1 ) >= file.factionLeaderAnimIndex )
+			{
+				dropshipAnim = dropshipAnimList[ file.factionLeaderAnimIndex ]
+				printt( "------------------" )
+				printt( "Selecting anim: " + dropshipAnim )
+				printt( "------------------" )
+			}
+			else
+			{
+				printt( "------------------" )
+				printt( "Tried to select anim number " + file.factionLeaderAnimIndex + " but only anims 0 - " + ( dropshipAnimList.len() - 1 ) + " available" )
+				printt( "------------------" )
+
+			}
+		}
+	#endif
+	//printt( "Picked anim: " + dropshipAnim )
+
+	AddAnimEvent( factionLeader, "set_skin_2", ModelSetSkin2 ) //Marvin specific
+	thread PlayAnim( factionLeader, dropshipAnim, dropShip, "ORIGIN" )
+	factionLeader.Anim_SetStartTime( dropshipSpawnTime )
+	factionLeader.LerpSkyScale( 0.9, 0.1 )
+	SetTeam( factionLeader, localViewPlayer.GetTeam() )
+
+	dropShip.EndSignal( "OnDestroy" )
+
+	OnThreadEnd(
+	function() : ( factionLeader, prop )
+		{
+			if ( IsValid( factionLeader ) ) //Need to check for this because if you disconnect it will delete that prop, then call this OnThreadEnd
+				factionLeader.Destroy()
+
+			if ( IsValid( prop ) )
+				prop.Destroy()
+		}
+	)
+
+	WaitForever()
+	//printt( "animation name: " + factionLeaderInfo.dropshipAnimName + ", initialTime: " + initialTime + ", propAttachment: " + factionLeaderInfo.propAttachment )
+}
+
+void function ModelSetSkin2( entity model ) //Marvin specific
+{
+	model.SetSkin( 2 )
+}
+
+bool function IsFactionLeaderOverriden()
+{
+	return file.factionLeaderOverriden
+}
+
+ OverrideFactionLeaderStruct function GetOverrideFactionLeader()
+ {
+ 	Assert ( IsFactionLeaderOverriden() )
+ 	return file.overrideFactionLeaderData
+ }
+
+void function SetOverrideFactionLeader( OverrideFactionLeaderStruct overrideFactionLeaderData )
+{
+	file.factionLeaderOverriden = true
+	file.overrideFactionLeaderData = overrideFactionLeaderData
+
+}
+void function ClearOverrideFactionLeader()
+{
+	file.factionLeaderOverriden = false
+	OverrideFactionLeaderStruct newBlankData
+	file.overrideFactionLeaderData =  newBlankData
+
+}
+
+bool function ShouldUseWaveForm( string factionName )
+{
+	if ( !FactionUsesWaveform( factionName ) )
+		return false
+
+	if ( IsWatchingReplay() ) // no waveforms in kill replay, confusing
+		return false
+
+	if ( IsFactionLeaderOverriden() && !file.overrideFactionLeaderData.useWaveForm )
+		return false
+
+	return true
+
+}
+
+#if DEV
+void function Dev_SetFactionLeaderAnimIndex( int value )
+{
+	file.factionLeaderAnimIndex = value
+}
+
+void function Dev_ForceEasterEgg()
+{
+	file.forceEasterEgg = true
+}
+#endif

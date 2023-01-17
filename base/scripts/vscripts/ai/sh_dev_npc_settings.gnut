@@ -1,0 +1,278 @@
+#if DEV
+global function InitNpcSettingsFileNamesForDevMenu
+global function GetDevMenuNPCSettings
+global function SetupSpawnAIButtons
+global function SetupSpawnBossTitans
+global function SetupTitanWeapon
+global function SetupPilotWeaponsFromFields
+global function SetupSpawnArmedNPC
+global function SetupFrontierDefense
+
+
+struct NpcDevMenuSpawn
+{
+	string title
+	string aiSettings
+}
+
+struct
+{
+	array<NpcDevMenuSpawn> devMenuNPCSettings
+} file
+
+void function InitNpcSettingsFileNamesForDevMenu()
+{
+	file.devMenuNPCSettings.clear()
+
+	array<string> aiSettings = GetAllNPCSettings()
+
+	foreach ( aiSetting in aiSettings )
+	{
+		string title = expect string( Dev_GetAISettingByKeyField_Global( aiSetting, "Title" ) )
+		Assert( title != "", "NPC_settings " + aiSetting + " had no title" )
+
+		NpcDevMenuSpawn devMenuSpawn
+		devMenuSpawn.title = title
+		devMenuSpawn.aiSettings = aiSetting
+		file.devMenuNPCSettings.append( devMenuSpawn )
+	}
+}
+
+array<NpcDevMenuSpawn> function GetDevMenuNPCSettings()
+{
+	return file.devMenuNPCSettings
+}
+
+//			var weaponCapacityVar = Dev_GetAISettingByKeyField_Global( aiSettings, "WeaponCapacity" )
+//			switch ( weaponCapacityVar )
+//			{
+//				case "PilotMainWeapons":
+//				case "TitanMainWeapons":
+//					table parms
+//
+//					string weaponCapacity = expect string( weaponCapacityVar )
+//					// ui command
+//					//SetupDevCommand( npcTitle, "script_ui " + cmd )
+//					parms.weaponCapacity <- weaponCapacity
+//					parms.baseClass <- baseClass
+//					parms.aiSettings <- aiSettings
+//					parms.team <- team
+//
+//					SetupDevFunc( npcTitle, SetDevMenu_SpawnNPCWithWeapon, parms )
+//					break
+
+
+void function SetupSpawnAIButtons( var team )
+{
+	expect int( team )
+
+	array<NpcDevMenuSpawn> npcSettingsFiles = GetDevMenuNPCSettings()
+	array<string> armedClasses = [ "npc_soldier", "npc_spectre" ]
+
+	// index 1 is ERROR
+	foreach ( devMenuSpawn in npcSettingsFiles )
+	{
+		#if UI
+		string aiSettings =	devMenuSpawn.aiSettings
+		string npcTitle = devMenuSpawn.title
+		string baseClass = expect string( Dev_GetAISettingByKeyField_Global( aiSettings, "BaseClass" ) )
+		bool foundArmedClass
+		foreach ( npcClass in armedClasses )
+		{
+			if ( aiSettings != npcClass )
+				continue
+			if ( aiSettings != baseClass )
+				continue
+
+			SetupDevFunc( npcTitle, SetDevMenu_ArmedNPC, { team = team, npcClass = npcClass } )
+			foundArmedClass = true
+		}
+
+		if ( foundArmedClass )
+			continue
+
+		string cmd = "script thread DEV_SpawnNPCWithWeaponAtCrosshair( \"" + baseClass + "\", \"" + aiSettings + "\", " + team + " )"
+		printt( "dev command:", cmd )
+
+		// server command
+		SetupDevCommand( npcTitle, cmd )
+		#endif
+		continue
+	}
+
+
+	#if UI
+	string cmd = "script thread DEV_SpawnAllNPCsWithTeam( " + team + " )"
+
+	// server command
+	SetupDevCommand( "All NPCs", cmd )
+	#endif
+
+}
+
+void function SetupFrontierDefense()
+{
+	#if UI
+		SetupDevCommand( "Toggle Harvester God Mode", "script DEV_FD_ToggleHarvesterGodMode()" )
+		SetupDevCommand( "Advance to Next Stage", "script DEV_FD_NextStage()" )
+		SetupDevCommand( "Win", "script FD_Win()" )
+		SetupDevCommand( "Kill All Enemies", "script FD_KillAllEnemies()" )
+		SetupDevCommand( "Kill Harvester", "script DEV_FD_KillHarvester()" )
+		SetupDevCommand( "Simulate Scrubs", "script DEV_FD_SimulateScrubs()" )
+		SetupDevCommand( "Dump Wave Prints", "script DEV_FD_DumpWavePrintsToConsole()" )
+		SetupDevCommand( "Dump Wave Group Data", "script DEV_FD_DumpWaveGroupDataToConsole()" )
+		SetupDevCommand( "Dump Full Wave Comp", "script DEV_FD_DumpFullWaveCompToConsole()" )
+		SetupDevCommand( "Dump Wave Comp", "script DEV_FD_DumpWaveCompToConsole()" )
+		SetupDevCommand( "Dump Full Wave Report", "script DEV_FD_DumpFullWaveReport()" )
+		SetupDevCommand( "Dump Wave Report", "script DEV_FD_DumpCurrentWaveReport()" )
+		SetupDevCommand( "Print FD Stats", "script DEV_PrintFDStats()" )
+		SetupDevCommand( "Titan Meta: Reset", "script DEV_FD_ResetTitanMeta()" )
+		SetupDevCommand( "Titan Meta: MAX", "script DEV_FD_MaxTitanMeta()" )
+		SetupDevCommand( "Titan Meta: Rank 2", "script DEV_FD_SetTitanMeta( 2 )" )
+		SetupDevCommand( "Titan Meta: Rank 4", "script DEV_FD_SetTitanMeta( 4 )" )
+		SetupDevCommand( "Titan Meta: Rank 6", "script DEV_FD_SetTitanMeta( 6 )" )
+		SetupDevCommand( "Titan Meta: Rank 8", "script DEV_FD_SetTitanMeta( 8 )" )
+		SetupDevCommand( "Titan Meta: Rank 10", "script DEV_FD_SetTitanMeta( 10 )" )
+		SetupDevCommand( "Titan Meta: Rank 12", "script DEV_FD_SetTitanMeta( 12 )" )
+	#endif
+}
+
+void function SetupTitanWeapon()
+{
+	array<TitanLoadoutDef> loadouts = GetAllowedTitanLoadouts()
+
+	#if UI
+	foreach ( loadout in loadouts )
+	{
+		string title = expect string( GetWeaponInfoFileKeyField_GlobalNotNull( loadout.primary, "printname" ) )
+		string cmd = "script thread DEV_SpawnWeaponAtCrosshair( \"" + loadout.primary + "\" )"
+		SetupDevCommand( title, cmd )
+	}
+	#endif
+}
+
+void function SetupSpawnArmedNPC( var data )
+{
+	#if UI
+	expect table( data )
+	string aiSettings =	expect string( data.npcClass )
+	string baseClass = aiSettings
+	int team = expect int( data.team )
+
+	array<string> weapons
+	if ( IsMultiplayer() )
+	{
+		weapons = GetAllWeaponsByType( [ eItemTypes.PILOT_PRIMARY,	eItemTypes.PILOT_SECONDARY ] )
+	}
+	else if ( IsSingleplayer() )
+	{
+		weapons = GetAllSPWeapons()
+	}
+
+	foreach ( weapon in weapons )
+	{
+		string weaponClass = expect string( GetWeaponInfoFileKeyField_GlobalNotNull( weapon, "weaponClass" ) )
+		if ( weaponClass != "human" )
+			continue
+		if ( !GetWeaponInfoFileKeyField_Global( weapon, "leveled_pickup" ) )
+			continue
+
+		var dev_menu_type = GetWeaponInfoFileKeyField_Global( weapon, "dev_menu_type" )
+		switch ( dev_menu_type )
+		{
+			case "offhand":
+				continue
+		}
+
+		string npcTitle = expect string( GetWeaponInfoFileKeyField_GlobalNotNull( weapon, "printname" ) )
+
+		string cmd = "script thread DEV_SpawnNPCWithWeaponAtCrosshair( \"" + baseClass + "\", \"" + aiSettings + "\", " + team + ", \"" + weapon + "\" )"
+
+		// server command
+		SetupDevCommand( npcTitle, cmd )
+		continue
+	}
+	#endif
+}
+
+
+void function SetupPilotWeaponsFromFields( var dev_menu_type_field )
+{
+	#if UI
+	if ( dev_menu_type_field == "not_set" )
+		dev_menu_type_field = null
+	//expect array( fireModes )
+	array<string> weapons
+	if ( IsMultiplayer() )
+	{
+		weapons = GetAllWeaponsByType( [ eItemTypes.PILOT_PRIMARY, eItemTypes.PILOT_SECONDARY, eItemTypes.PILOT_SPECIAL, eItemTypes.PILOT_ORDNANCE ] )
+	}
+	else if ( IsSingleplayer() )
+	{
+		weapons = GetAllSPWeapons()
+	}
+
+	foreach ( weapon in weapons )
+	{
+		string weaponClass = expect string( GetWeaponInfoFileKeyField_GlobalNotNull( weapon, "weaponClass" ) )
+		if ( weaponClass != "human" )
+			continue
+		if ( !GetWeaponInfoFileKeyField_Global( weapon, "leveled_pickup" ) )
+			continue
+
+		var dev_menu_type = GetWeaponInfoFileKeyField_Global( weapon, "dev_menu_type" )
+		if ( dev_menu_type != dev_menu_type_field )
+			continue
+		/*
+		string fire_mode = expect string( GetWeaponInfoFileKeyField_GlobalNotNull( weapon, "fire_mode" ) )
+
+		bool found
+		foreach ( fireMode in fireModes )
+		{
+			if ( fire_mode == expect string( fireMode ) )
+			{
+				found = true
+				break
+			}
+		}
+
+		if ( !found )
+			continue
+		*/
+
+		string title = expect string( GetWeaponInfoFileKeyField_GlobalNotNull( weapon, "printname" ) )
+		string cmd = "script thread DEV_SpawnWeaponAtCrosshair( \"" + weapon + "\" )"
+		SetupDevCommand( title, cmd )
+	}
+	#endif
+}
+
+
+void function SetupSpawnBossTitans()
+{
+	array<TitanLoadoutDef> loadouts = GetAllowedTitanLoadouts()
+	foreach ( loadout in loadouts )
+	{
+		#if UI
+		string playerSetting = loadout.setFile
+		string title = expect string( GetPlayerSettingsFieldForClassName( playerSetting, "printname" ) )
+		string cmd = "script thread DEV_SpawnBossTitanAtCrosshair( \"" + playerSetting + "\" )"
+		SetupDevCommand( title, cmd )
+		#endif
+	}
+
+	array<string> mercNames = GetBossCharacters()
+
+	foreach ( mercName in mercNames )
+	{
+		TitanLoadoutDef ornull loadout = GetTitanLoadoutForBossCharacter( mercName )
+		if ( loadout == null )
+			continue
+
+		#if UI
+		string cmd = "script thread DEV_SpawnMercTitanAtCrosshair( \"" + mercName + "\" )"
+		SetupDevCommand( "Merc: " + mercName, cmd )
+		#endif
+	}
+}
+#endif

@@ -1,0 +1,351 @@
+
+global function HasChildEntitlements
+global function GetChildEntitlements
+global function GetParentEntitlements
+global function GetPercentOff
+global function IsLimitedOfferEntitlement
+global function IsLimitedOfferEntitlementExpired
+#if UI
+global function GetCombinedPriceOfEntitlements
+#endif // UI
+
+#if UI || CLIENT
+global function GetUnpurchasedChildEntitlements
+#endif // UI || CLIENT
+
+#if (UI || CLIENT) && DEV
+global function Dev_LocalPlayerHasEntitlement
+
+// Replace calls to LocalPlayerHasEntitlement() with this to test menu display states
+bool function Dev_LocalPlayerHasEntitlement( var entitlement )
+{
+	return true // false
+}
+#endif // (UI || CLIENT) && DEV
+
+bool function HasChildEntitlements( int entitlement )
+{
+	switch ( entitlement )
+	{
+		case ET_DLC1_BUNDLE:
+		case ET_DLC3_BUNDLE:
+		case ET_DLC5_BUNDLE:
+		case ET_PRIME_TITANS_BUNDLE:
+		case ET_DLC7_TITAN_WARPAINT_BUNDLE:
+		case ET_DLC7_WEAPON_BUNDLE:
+		case ET_DLC8_WEAPON_WARPAINT_BUNDLE:
+		case ET_DLC9_WEAPON_WARPAINT_BUNDLE:
+		case ET_DLC10_WEAPON_WARPAINT_BUNDLE:
+		case ET_DLC11_WEAPON_WARPAINT_BUNDLE:
+			return true
+	}
+
+	return false
+}
+
+array<int> function GetChildEntitlements( int parentEntitlement )
+{
+	array<int> childEntitlements
+
+	switch ( parentEntitlement )
+	{
+		case ET_DLC1_BUNDLE:
+			childEntitlements.append( ET_DLC1_PRIME_ION )
+			childEntitlements.append( ET_DLC1_PRIME_SCORCH )
+			childEntitlements.append( ET_DLC1_ION )
+			childEntitlements.append( ET_DLC1_TONE )
+			childEntitlements.append( ET_DLC1_SCORCH )
+			childEntitlements.append( ET_DLC1_LEGION )
+			childEntitlements.append( ET_DLC1_RONIN )
+			childEntitlements.append( ET_DLC1_NORTHSTAR )
+			childEntitlements.append( ET_DLC1_CAMO )
+			childEntitlements.append( ET_DLC1_CALLSIGN )
+			break
+
+		case ET_DLC3_BUNDLE:
+			childEntitlements.append( ET_DLC3_PRIME_NORTHSTAR )
+			childEntitlements.append( ET_DLC3_PRIME_LEGION )
+			childEntitlements.append( ET_DLC3_ION )
+			childEntitlements.append( ET_DLC3_TONE )
+			childEntitlements.append( ET_DLC3_SCORCH )
+			childEntitlements.append( ET_DLC3_LEGION )
+			childEntitlements.append( ET_DLC3_RONIN )
+			childEntitlements.append( ET_DLC3_NORTHSTAR )
+			childEntitlements.append( ET_DLC3_CAMO )
+			childEntitlements.append( ET_DLC3_CALLSIGN )
+			break
+
+		case ET_DLC5_BUNDLE:
+			childEntitlements.append( ET_DLC5_PRIME_TONE )
+			childEntitlements.append( ET_DLC5_PRIME_RONIN )
+			childEntitlements.append( ET_DLC5_ION )
+			childEntitlements.append( ET_DLC5_TONE )
+			childEntitlements.append( ET_DLC5_SCORCH )
+			childEntitlements.append( ET_DLC5_LEGION )
+			childEntitlements.append( ET_DLC5_RONIN )
+			childEntitlements.append( ET_DLC5_NORTHSTAR )
+			childEntitlements.append( ET_DLC5_CAMO )
+			childEntitlements.append( ET_DLC5_CALLSIGN )
+			break
+
+		case ET_PRIME_TITANS_BUNDLE:
+			childEntitlements.append( ET_DLC1_PRIME_ION )
+			childEntitlements.append( ET_DLC1_PRIME_SCORCH )
+			childEntitlements.append( ET_DLC3_PRIME_NORTHSTAR )
+			childEntitlements.append( ET_DLC3_PRIME_LEGION )
+			childEntitlements.append( ET_DLC5_PRIME_TONE )
+			childEntitlements.append( ET_DLC5_PRIME_RONIN )
+			break
+
+		case ET_DLC7_TITAN_WARPAINT_BUNDLE:
+			childEntitlements.append( ET_DLC7_ION_WARPAINT )
+			childEntitlements.append( ET_DLC7_SCORCH_WARPAINT )
+			childEntitlements.append( ET_DLC7_NORTHSTAR_WARPAINT )
+			childEntitlements.append( ET_DLC7_RONIN_WARPAINT )
+			childEntitlements.append( ET_DLC7_TONE_WARPAINT )
+			childEntitlements.append( ET_DLC7_LEGION_WARPAINT )
+			childEntitlements.append( ET_DLC7_MONARCH_WARPAINT )
+			break
+
+		case ET_DLC7_WEAPON_BUNDLE:
+			childEntitlements.append( ET_DLC7_R201_WARPAINT )
+			childEntitlements.append( ET_DLC7_G2A5_WARPAINT )
+			childEntitlements.append( ET_DLC7_FLATLINE_WARPAINT )
+			childEntitlements.append( ET_DLC7_CAR_WARPAINT )
+			childEntitlements.append( ET_DLC7_ALTERNATOR_WARPAINT )
+			childEntitlements.append( ET_DLC7_EVA8_WARPAINT )
+			childEntitlements.append( ET_DLC7_WINGMAN_WARPAINT )
+			childEntitlements.append( ET_DLC7_ARCHER_WARPAINT )
+			break
+
+		case ET_DLC8_WEAPON_WARPAINT_BUNDLE:
+			childEntitlements.append( ET_DLC8_R201_WARPAINT )
+			childEntitlements.append( ET_DLC8_HEMLOK_WARPAINT )
+			childEntitlements.append( ET_DLC8_R97_WARPAINT )
+			childEntitlements.append( ET_DLC8_KRABER_WARPAINT )
+			childEntitlements.append( ET_DLC8_SPITFIRE_WARPAINT )
+			childEntitlements.append( ET_DLC8_DEVOTION_WARPAINT )
+			childEntitlements.append( ET_DLC8_MOZAMBIQUE_WARPAINT )
+			childEntitlements.append( ET_DLC8_THUNDERBOLT_WARPAINT )
+			break
+
+		case ET_DLC9_WEAPON_WARPAINT_BUNDLE:
+			childEntitlements.append( ET_DLC9_LSTAR_WARPAINT )
+			childEntitlements.append( ET_DLC9_MASTIFF_WARPAINT )
+			childEntitlements.append( ET_DLC9_SIDEWINDER_WARPAINT )
+			childEntitlements.append( ET_DLC9_R201_WARPAINT )
+			childEntitlements.append( ET_DLC9_CAR_WARPAINT )
+			childEntitlements.append( ET_DLC9_SPITFIRE_WARPAINT )
+			break
+
+		case ET_DLC10_WEAPON_WARPAINT_BUNDLE:
+			childEntitlements.append( ET_DLC10_R101_WARPAINT )
+			childEntitlements.append( ET_DLC10_FLATLINE_WARPAINT )
+			childEntitlements.append( ET_DLC10_VOLT_WARPAINT )
+			childEntitlements.append( ET_DLC10_ALTERNATOR_WARPAINT )
+			childEntitlements.append( ET_DLC10_SOFTBALL_WARPAINT )
+			childEntitlements.append( ET_DLC10_EPG1_WARPAINT )
+			break
+
+		case ET_DLC11_WEAPON_WARPAINT_BUNDLE:
+			childEntitlements.append( ET_DLC11_DMR_WARPAINT )
+			childEntitlements.append( ET_DLC11_DOUBLETAKE_WARPAINT )
+			childEntitlements.append( ET_DLC11_G2A5_WARPAINT )
+			childEntitlements.append( ET_DLC11_COLDWAR_WARPAINT )
+			childEntitlements.append( ET_DLC11_R97_WARPAINT )
+			childEntitlements.append( ET_DLC11_R101_WARPAINT )
+			break
+	}
+
+	return childEntitlements
+}
+
+array<int> function GetParentEntitlements( int childEntitlement )
+{
+	array<int> parentEntitlements
+
+	switch ( childEntitlement )
+	{
+		case ET_DLC1_PRIME_ION:
+		case ET_DLC1_PRIME_SCORCH:
+			parentEntitlements.append( ET_DLC1_BUNDLE )
+			parentEntitlements.append( ET_PRIME_TITANS_BUNDLE )
+			break
+
+		case ET_DLC3_PRIME_NORTHSTAR:
+		case ET_DLC3_PRIME_LEGION:
+			parentEntitlements.append( ET_DLC3_BUNDLE )
+			parentEntitlements.append( ET_PRIME_TITANS_BUNDLE )
+			break
+
+		case ET_DLC5_PRIME_TONE:
+		case ET_DLC5_PRIME_RONIN:
+			parentEntitlements.append( ET_DLC5_BUNDLE )
+			parentEntitlements.append( ET_PRIME_TITANS_BUNDLE )
+			break
+
+		case ET_DLC1_ION:
+		case ET_DLC1_TONE:
+		case ET_DLC1_SCORCH:
+		case ET_DLC1_LEGION:
+		case ET_DLC1_RONIN:
+		case ET_DLC1_NORTHSTAR:
+		case ET_DLC1_CAMO:
+		case ET_DLC1_CALLSIGN:
+			parentEntitlements.append( ET_DLC1_BUNDLE )
+			break
+
+		case ET_DLC3_ION:
+		case ET_DLC3_TONE:
+		case ET_DLC3_SCORCH:
+		case ET_DLC3_LEGION:
+		case ET_DLC3_RONIN:
+		case ET_DLC3_NORTHSTAR:
+		case ET_DLC3_CAMO:
+		case ET_DLC3_CALLSIGN:
+			parentEntitlements.append( ET_DLC3_BUNDLE )
+			break
+
+		case ET_DLC5_ION:
+		case ET_DLC5_TONE:
+		case ET_DLC5_SCORCH:
+		case ET_DLC5_LEGION:
+		case ET_DLC5_RONIN:
+		case ET_DLC5_NORTHSTAR:
+		case ET_DLC5_CAMO:
+		case ET_DLC5_CALLSIGN:
+			parentEntitlements.append( ET_DLC5_BUNDLE )
+			break
+
+		case ET_DLC7_ION_WARPAINT:
+		case ET_DLC7_SCORCH_WARPAINT:
+		case ET_DLC7_NORTHSTAR_WARPAINT:
+		case ET_DLC7_RONIN_WARPAINT:
+		case ET_DLC7_TONE_WARPAINT:
+		case ET_DLC7_LEGION_WARPAINT:
+		case ET_DLC7_MONARCH_WARPAINT:
+			parentEntitlements.append( ET_DLC7_TITAN_WARPAINT_BUNDLE )
+			break
+
+		case ET_DLC7_R201_WARPAINT:
+		case ET_DLC7_G2A5_WARPAINT:
+		case ET_DLC7_FLATLINE_WARPAINT:
+		case ET_DLC7_CAR_WARPAINT:
+		case ET_DLC7_ALTERNATOR_WARPAINT:
+		case ET_DLC7_EVA8_WARPAINT:
+		case ET_DLC7_WINGMAN_WARPAINT:
+		case ET_DLC7_ARCHER_WARPAINT:
+			parentEntitlements.append( ET_DLC7_WEAPON_BUNDLE )
+			break
+
+		case ET_DLC8_R201_WARPAINT:
+		case ET_DLC8_HEMLOK_WARPAINT:
+		case ET_DLC8_R97_WARPAINT:
+		case ET_DLC8_KRABER_WARPAINT:
+		case ET_DLC8_SPITFIRE_WARPAINT:
+		case ET_DLC8_DEVOTION_WARPAINT:
+		case ET_DLC8_MOZAMBIQUE_WARPAINT:
+		case ET_DLC8_THUNDERBOLT_WARPAINT:
+			parentEntitlements.append( ET_DLC8_WEAPON_WARPAINT_BUNDLE )
+			break
+
+		case ET_DLC9_LSTAR_WARPAINT:
+		case ET_DLC9_MASTIFF_WARPAINT:
+		case ET_DLC9_SIDEWINDER_WARPAINT:
+		case ET_DLC9_R201_WARPAINT:
+		case ET_DLC9_CAR_WARPAINT:
+		case ET_DLC9_SPITFIRE_WARPAINT:
+			parentEntitlements.append( ET_DLC9_WEAPON_WARPAINT_BUNDLE )
+			break
+
+		case ET_DLC10_R101_WARPAINT:
+		case ET_DLC10_FLATLINE_WARPAINT:
+		case ET_DLC10_VOLT_WARPAINT:
+		case ET_DLC10_ALTERNATOR_WARPAINT:
+		case ET_DLC10_SOFTBALL_WARPAINT:
+		case ET_DLC10_EPG1_WARPAINT:
+			parentEntitlements.append( ET_DLC10_WEAPON_WARPAINT_BUNDLE )
+			break
+
+		case ET_DLC11_DMR_WARPAINT:
+		case ET_DLC11_DOUBLETAKE_WARPAINT:
+		case ET_DLC11_G2A5_WARPAINT:
+		case ET_DLC11_COLDWAR_WARPAINT:
+		case ET_DLC11_R97_WARPAINT:
+		case ET_DLC11_R101_WARPAINT:
+			parentEntitlements.append( ET_DLC11_WEAPON_WARPAINT_BUNDLE )
+			break
+	}
+
+	return parentEntitlements
+}
+
+int function GetPercentOff( int entitlement )
+{
+	/*switch ( entitlement )
+	{
+	}*/
+
+	return 0
+}
+
+bool function IsLimitedOfferEntitlement( int entitlement )
+{
+	switch ( entitlement )
+	{
+		case ET_DLC9_R201_WARPAINT:
+		case ET_DLC9_CAR_WARPAINT:
+		case ET_DLC9_SPITFIRE_WARPAINT:
+			return true
+	}
+
+	return false
+}
+
+bool function IsLimitedOfferEntitlementExpired( int entitlement )
+{
+	switch ( entitlement )
+	{
+		case ET_DLC9_R201_WARPAINT:
+		case ET_DLC9_CAR_WARPAINT:
+		case ET_DLC9_SPITFIRE_WARPAINT:
+			return true
+	}
+
+	return false
+}
+
+#if UI
+int function GetCombinedPriceOfEntitlements( array<int> entitlements )
+{
+	int price
+	foreach ( entitlement in entitlements )
+		price += GetEntitlementPricesAsInt( [ entitlement ] )[0]
+
+	return price
+}
+#endif // UI
+
+#if UI || CLIENT
+array<int> function GetUnpurchasedChildEntitlements( int parentEntitlement )
+{
+	array<int> all = GetChildEntitlements( parentEntitlement )
+	array<int> filtered
+
+	foreach ( entitlement in all )
+	{
+		// ion and scorch are free with ET_DELUXE_EDITION
+		if ( entitlement == ET_DLC1_PRIME_ION || entitlement == ET_DLC1_PRIME_SCORCH )
+		{
+			if ( LocalPlayerHasEntitlement( ET_DELUXE_EDITION ) )
+				continue
+		}
+
+		if ( !LocalPlayerHasEntitlement( entitlement ) )
+			filtered.append( entitlement )
+	}
+
+	return filtered
+}
+#endif // UI || CLIENT
+

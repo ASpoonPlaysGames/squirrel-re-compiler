@@ -1,0 +1,63 @@
+
+global const TEAM_IMC_GRUNT_MODEL 			= $"models/humans/grunts/imc_grunt_rifle.mdl"
+global const TEAM_IMC_GRUNT_MODEL_LMG		= $"models/humans/grunts/imc_grunt_lmg.mdl"
+global const TEAM_IMC_GRUNT_MODEL_RIFLE		= $"models/humans/grunts/imc_grunt_rifle.mdl"
+global const TEAM_IMC_GRUNT_MODEL_ROCKET 	= $"models/humans/grunts/imc_grunt_shotgun.mdl"
+global const TEAM_IMC_GRUNT_MODEL_SHOTGUN	= $"models/humans/grunts/imc_grunt_shotgun.mdl"
+global const TEAM_IMC_GRUNT_MODEL_SMG		= $"models/humans/grunts/imc_grunt_smg.mdl"
+
+// LEECHING
+global const DATA_KNIFE_MODEL = $"models/weapons/data_knife/v_data_knife.mdl"
+global const STEAL_PISTOL_MODEL = $"models/weapons/p2011/w_p2011.mdl"
+
+global const SENTRY_TURRET_MODEL = $"models/Robots/turret_plasma/turret_plasma.mdl"
+global const ROCKET_TURRET_MODEL = $"models/Robots/turret_rocket/turret_rocket.mdl"
+global const PLASMA_TURRET_MODEL = $"models/Robots/turret_plasma/turret_plasma.mdl"
+global const HITSCAN_TURRET_MODEL = $"models/Robots/turret_hitscan/turret_hitscan.mdl"
+
+global const asset CONTROL_PANEL_MODEL = $"models/communication/terminal_usable_imc_01.mdl"
+global const asset RODEO_BATTERY_MODEL = $"models/titans/medium/titan_medium_battery_static.mdl"
+global const asset MODEL_GENERATOR = $"models/beacon/charge_generator_01_glass.mdl"
+
+#if MP
+global const asset FD_SANDBAGS_1 = $"models/barriers/sandbags_large_01.mdl"
+global const asset FD_SANDBAGS_2 = $"models/barriers/sandbags_curved_01.mdl"
+global const asset FD_SANDBAGS_3 = $"models/barriers/sandbags_double_01.mdl"
+#endif
+
+#if SERVER || CLIENT
+global function ShCommonModels_Init
+global function ShHarvester_GlobalInit
+
+void function ShCommonModels_Init()
+{
+	PrecacheModel( $"models/weapons/sentry_frag/sentry_frag.mdl" ) // need to derive this from weapon
+	PrecacheModel( $"models/robots/drone_frag/drone_frag.mdl" ) // need to derive this from weapon
+
+	#if MP
+	PrecacheModel( FD_SANDBAGS_1 )
+	PrecacheModel( FD_SANDBAGS_2 )
+	PrecacheModel( FD_SANDBAGS_3 )
+	#endif
+
+	if ( !IsLobby() )
+	{
+		PrecacheModel( CONTROL_PANEL_MODEL )
+	}
+}
+
+void function ShHarvester_GlobalInit()
+{
+	#if MP
+	PrecacheModel( MODEL_HARVESTER_TOWER )
+	PrecacheModel( MODEL_HARVESTER_TOWER_COLLISION )
+	PrecacheModel( MODEL_HARVESTER_TOWER_RINGS )
+	PrecacheParticleSystem( FX_HARVESTER_BEAM )
+	PrecacheParticleSystem( FX_HARVESTER_HEALTH_LOW )
+	PrecacheParticleSystem( FX_HARVESTER_OVERSHIELD )
+	PrecacheParticleSystem( FX_HARVESTER_SHIELD )
+	PrecacheParticleSystem( FX_HARVESTER_SHIELD_BREAK )
+	PrecacheParticleSystem( FX_GEN_HARVESTER_BEAM )
+	#endif
+}
+#endif
