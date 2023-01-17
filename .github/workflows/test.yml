@@ -3,7 +3,7 @@ name: build
 on: [push, pull_request]
 
 jobs:
-  format:
+  compile:
     runs-on: windows-latest
     steps:
       - name: Checkout Repo
