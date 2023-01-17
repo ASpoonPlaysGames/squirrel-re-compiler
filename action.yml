@@ -1,8 +1,14 @@
 name: "squirrel-re compile check"
 description: "tries to compile a ttf2 vscript"
 
+inputs:
+  mods-directory:
+    description: "the directory to check compile for"
+    required: true
+    
+
 runs:
   using: 'composite'
   steps:
-    - run: SquirrelStandalone.exe "mods"
+    - run: SquirrelStandalone.exe "${{ inputs.mods-directory }}"
       shell: cmd

@@ -11,4 +11,6 @@ jobs:
       
       - name: Test Step
         uses: ./
+        with:
+          mods-directory: "mods"
 
