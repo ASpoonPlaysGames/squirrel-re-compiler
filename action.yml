@@ -1,6 +1,8 @@
-name: "squirre-re compile check"
+name: "squirrel-re compile check"
 description: "tries to compile a ttf2 vscript"
 
 runs:
-  using: 'node16'
-  main: 'index.js'
+  using: 'composite'
+  steps:
+    - run: SquirrelStandalone.exe "mods"
+      shell: cmd
