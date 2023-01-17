@@ -10,5 +10,5 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - run: SquirrelStandalone.exe "${{ inputs.mods-directory }}"
+    - run: ${{ github.action_path }}/SquirrelStandalone.exe "${{ inputs.mods-directory }}"
       shell: cmd
