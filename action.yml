@@ -1,9 +1,9 @@
 name: "squirrel-re compile check"
-description: "tries to compile a ttf2 vscript"
+description: "tries to compile Titanfall 2 vscripts using SquirrelStandalone"
 
 inputs:
   mods-directory:
-    description: "the directory to check compile for"
+    description: "The directory containing the mods to be compiled"
     required: true
     
 
