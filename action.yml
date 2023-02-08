@@ -5,6 +5,9 @@ inputs:
   mods-directory:
     description: "The directory containing the mods to be compiled"
     required: true
+  native-json:
+    description: "The path to the json file containing all of the native functions being added"
+    required: true
     
 
 runs:
@@ -12,5 +15,5 @@ runs:
   steps:
     - run: |
         cd ${{ github.action_path }}
-        SquirrelStandalone.exe "${{ inputs.mods-directory }}"
+        SquirrelStandalone.exe "${{ inputs.mods-directory }}" "${{ inputs.native-json }}"
       shell: cmd
