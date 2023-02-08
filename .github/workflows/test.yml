@@ -13,4 +13,5 @@ jobs:
         uses: ./
         with:
           mods-directory: "mods"
+          native-json: "natives.json"
 
