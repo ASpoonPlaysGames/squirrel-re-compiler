@@ -1,2 +1,2 @@
-SquirrelStandalone.exe "mods"
+SquirrelStandalone.exe "mods" "natives.json"
 pause
