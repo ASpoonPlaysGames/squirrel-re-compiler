@@ -1,3 +1,3 @@
 # squirrel-re-compiler
 
-poggers
+Runs using https://github.com/RoyalBlue1/StandaloneR2Squirrel
