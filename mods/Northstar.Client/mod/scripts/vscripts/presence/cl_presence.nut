@@ -1,60 +1,65 @@
 untyped
 globalize_all_functions
 
-struct {
-	int highestScore = 0
-	int secondHighestScore = 0
-} file
-
-void function OnPrematchStart()
+GameStateStruct function DiscordRPC_GenerateGameState( GameStateStruct gs )
 {
-    if ( GetServerVar( "roundBased" ) )
-        NSUpdateTimeInfo( level.nv.roundEndTime - Time() )
-    else
-        NSUpdateTimeInfo( level.nv.gameEndTime - Time() )
-}
+    int highestScore = 0
+    int secondHighest = 0
 
-void function NSUpdateGameStateClientStart()
-{
-    #if MP
-		AddCallback_GameStateEnter( eGameState.Prematch, OnPrematchStart )
-    #endif
-	
-    thread NSUpdateGameStateLoopClient()
-    OnPrematchStart()
-}
-
-void function NSUpdateGameStateLoopClient()
-{
-    while ( true )
+    foreach ( player in GetPlayerArray() )
     {
-		if ( IsSingleplayer() )
-		{
-			NSUpdateGameStateClient( GetPlayerArray().len(), GetCurrentPlaylistVarInt( "max_players", 65535 ), 1, 1, 1, GetServerVar( "roundBased" ), 1 )
-			wait 1.0
-		}
-		else
-		{
-			foreach ( player in GetPlayerArray() )
-			{
-				if ( GameRules_GetTeamScore( player.GetTeam() ) >= file.highestScore )
-				{
-					file.highestScore = GameRules_GetTeamScore( player.GetTeam() )
-				}
-				else if ( GameRules_GetTeamScore( player.GetTeam() ) > file.secondHighestScore )
-				{
-					file.secondHighestScore = GameRules_GetTeamScore( player.GetTeam() )
-				}
-			}
-			
-			int ourScore = 0
-			if ( IsValid( GetLocalClientPlayer() ) )
-				ourScore = GameRules_GetTeamScore( GetLocalClientPlayer().GetTeam() )
-			
-			int limit = IsRoundBased() ? GetCurrentPlaylistVarInt( "roundscorelimit", 0 ) : GetCurrentPlaylistVarInt( "scorelimit", 0 )
-			NSUpdateGameStateClient( GetPlayerArray().len(), GetCurrentPlaylistVarInt( "max_players", 65535 ), ourScore, file.secondHighestScore, file.highestScore, GetServerVar( "roundBased" ), limit )
-			OnPrematchStart()
-			wait 1.0
-		}
+        if ( GameRules_GetTeamScore( player.GetTeam() ) >= highestScore )
+        {
+            highestScore = GameRules_GetTeamScore( player.GetTeam() )
+        }
+        else if ( GameRules_GetTeamScore( player.GetTeam() ) > secondHighest )
+        {
+            secondHighest = GameRules_GetTeamScore( player.GetTeam() )
+        }
     }
+
+    gs.map = GetMapName()
+    gs.mapDisplayname = Localize( IsSingleplayer() ? GetCampaignMapDisplayName( GetMapName() ) : GetMapDisplayName( GetMapName() ) )
+
+    gs.playlist = GetCurrentPlaylistName()
+    gs.playlistDisplayname = Localize( GetCurrentPlaylistVarString( "name", GetCurrentPlaylistName() ) ) 
+
+    int reservedCount = GetTotalPendingPlayersReserved()
+    int connectingCount = GetTotalPendingPlayersConnecting()
+    int loadingCount = GetTotalPendingPlayersLoading()
+    int connectedCount = GetPlayerArray().len()
+    int allKnownPlayersCount = reservedCount + connectingCount + loadingCount + connectedCount
+
+    gs.currentPlayers = allKnownPlayersCount
+    gs.maxPlayers = GetCurrentPlaylistVarInt( "max_players", 16 )
+
+    if ( IsValid( GetLocalClientPlayer() ) )
+		gs.ownScore = GameRules_GetTeamScore( GetLocalClientPlayer().GetTeam() )
+
+    #if MP
+    if ( GameRules_GetGameMode() == FD )
+    {
+        gs.playlist = "fd" // So it returns only one thing to the plugin side instead of the 5 separate difficulties FD have
+        if ( GetGlobalNetInt( "FD_waveState" ) == WAVE_STATE_INCOMING || GetGlobalNetInt( "FD_waveState" ) == WAVE_STATE_IN_PROGRESS )
+        {
+            gs.fd_waveNumber = GetGlobalNetInt( "FD_currentWave" ) + 1
+            gs.fd_totalWaves = GetGlobalNetInt( "FD_totalWaves" )
+        }
+        else
+            gs.fd_waveNumber = -1 // Tells plugin it's on Wave Break
+    }
+	#else
+	gs.fd_waveNumber = -1 // Unecessary for campaign so return -1
+	#endif
+
+    gs.serverGameState = GetGameState() == -1 ? 0 : GetGameState()
+    gs.otherHighestScore = gs.ownScore == highestScore ? secondHighest : highestScore
+
+    gs.maxScore = IsRoundBased() ? GetCurrentPlaylistVarInt( "roundscorelimit", 0 ) : GetCurrentPlaylistVarInt( "scorelimit", 0 )
+
+	if ( GetServerVar( "roundBased" ) )
+		gs.timeEnd = expect float(level.nv.roundEndTime - Time())
+	else
+		gs.timeEnd = expect float(level.nv.gameEndTime - Time())
+    return gs
 }

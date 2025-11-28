@@ -1,4 +1,30 @@
 {
+	"CONSTS":[
+		{
+			"name": "VANILLA",
+			"value": 0
+		},
+		{
+			"name": "MAX_FOLDER_SIZE",
+			"value": 1024
+		},
+		{
+			"name": "NS_VERSION_MAJOR",
+			"value": 0
+		},
+		{
+			"name": "NS_VERSION_MINOR",
+			"value": 0
+		},
+		{
+			"name": "NS_VERSION_PATCH",
+			"value": 0
+		},
+		{
+			"name": "NS_VERSION_DEV",
+			"value": 1
+		}
+	],
 	"SERVER":[
 		{
 			"name":"NSGetModNames",
@@ -7,52 +33,16 @@
 			"argTypes":""
 		},
 		{
-			"name":"NSIsModEnabled",
+			"name":"NSGetModsInformation",
 			"helpText":"",
-			"returnTypeString":"bool",
-			"argTypes":"string modName"
+			"returnTypeString":"array<ModInfo>",
+			"argTypes":""
 		},
 		{
 			"name":"NSSetModEnabled",
 			"helpText":"",
 			"returnTypeString":"void",
-			"argTypes":"string modName, bool enabled"
-		},
-		{
-			"name":"NSGetModDescriptionByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModVersionByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModDownloadLinkByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModLoadPriority",
-			"helpText":"",
-			"returnTypeString":"int",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSIsModRequiredOnClient",
-			"helpText":"",
-			"returnTypeString":"bool",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModConvarsByModName",
-			"helpText":"",
-			"returnTypeString":"array<string>",
-			"argTypes":"string modName"
+			"argTypes":"string modName, string modVersion, bool enabled"
 		},
 		{
 			"name":"DecodeJSON",
@@ -179,6 +169,54 @@
 			"helpText":"Whether or not HTTP requests can be made to a private network address. You can enable this by starting the game with -allowlocalhttp.",
 			"returnTypeString":"bool",
 			"argTypes":""
+		},
+		{
+			"name":"NS_InternalLoadFile",
+			"helpText":"Loads a file asynchronously.",
+			"returnTypeString":"int",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSSaveFile",
+			"helpText":"Saves a file.",
+			"returnTypeString":"void",
+			"argTypes":"string file, string data"
+		},
+		{
+			"name":"NSSaveJSONFile",
+			"helpText":"Converts a squirrel table to a json string, then saves it to a file.",
+			"returnTypeString":"void",
+			"argTypes":"string file, table data"
+		},
+		{
+			"name":"NSDoesFileExist",
+			"helpText":"Checks whether or not a file exists.",
+			"returnTypeString":"bool",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSDeleteFile",
+			"helpText":"Deletes a file.",
+			"returnTypeString":"bool",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NS_InternalGetAllFiles",
+			"helpText":"Returns an array of all files in a mod's save folder.",
+			"returnTypeString":"array<string>",
+			"argTypes":"string path"
+		},
+		{
+			"name":"NSGetFileSize",
+			"helpText":"Returns the size of a file, in KB, rounded down.",
+			"returnTypeString":"int",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSIsFolder",
+			"helpText":"Returns whether or not a given path leads to a folder.",
+			"returnTypeString":"bool",
+			"argTypes":"string path"
 		}
 	],
 	"CLIENT":[
@@ -207,52 +245,10 @@
 			"argTypes":""
 		},
 		{
-			"name":"NSIsModEnabled",
-			"helpText":"",
-			"returnTypeString":"bool",
-			"argTypes":"string modName"
-		},
-		{
 			"name":"NSSetModEnabled",
 			"helpText":"",
 			"returnTypeString":"void",
-			"argTypes":"string modName, bool enabled"
-		},
-		{
-			"name":"NSGetModDescriptionByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModVersionByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModDownloadLinkByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModLoadPriority",
-			"helpText":"",
-			"returnTypeString":"int",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSIsModRequiredOnClient",
-			"helpText":"",
-			"returnTypeString":"bool",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModConvarsByModName",
-			"helpText":"",
-			"returnTypeString":"array<string>",
-			"argTypes":"string modName"
+			"argTypes":"string modName, string modVersion, bool enabled"
 		},
 		{
 			"name":"DecodeJSON",
@@ -325,7 +321,55 @@
 			"helpText":"Whether or not HTTP requests can be made to a private network address. You can enable this by starting the game with -allowlocalhttp.",
 			"returnTypeString":"bool",
 			"argTypes":""
-		}
+		},
+		{
+			"name":"NS_InternalLoadFile",
+			"helpText":"Loads a file asynchronously.",
+			"returnTypeString":"int",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSSaveFile",
+			"helpText":"Saves a file.",
+			"returnTypeString":"void",
+			"argTypes":"string file, string data"
+		},
+		{
+			"name":"NSSaveJSONFile",
+			"helpText":"Converts a squirrel table to a json string, then saves it to a file.",
+			"returnTypeString":"void",
+			"argTypes":"string file, table data"
+		},
+		{
+			"name":"NSDoesFileExist",
+			"helpText":"Checks whether or not a file exists.",
+			"returnTypeString":"bool",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSDeleteFile",
+			"helpText":"Deletes a file.",
+			"returnTypeString":"bool",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NS_InternalGetAllFiles",
+			"helpText":"Returns an array of all files in a mod's save folder.",
+			"returnTypeString":"array<string>",
+			"argTypes":"string path"
+		},
+		{
+			"name":"NSGetFileSize",
+			"helpText":"Returns the size of a file, in KB, rounded down.",
+			"returnTypeString":"int",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSIsFolder",
+			"helpText":"Returns whether or not a given path leads to a folder.",
+			"returnTypeString":"bool",
+			"argTypes":"string path"
+    }
 	],
 	"UI":[
 		{
@@ -359,52 +403,54 @@
 			"argTypes":""
 		},
 		{
-			"name":"NSIsModEnabled",
+			"name":"NSGetModsInformation",
 			"helpText":"",
-			"returnTypeString":"bool",
+			"returnTypeString":"array<ModInfo>",
+			"argTypes":""
+		},
+		{
+			"name":"NSGetModInformation",
+			"helpText":"",
+			"returnTypeString":"array<ModInfo>",
 			"argTypes":"string modName"
 		},
 		{
 			"name":"NSSetModEnabled",
 			"helpText":"",
 			"returnTypeString":"void",
-			"argTypes":"string modName, bool enabled"
+			"argTypes":"string modName, string modVersion, bool enabled"
 		},
 		{
-			"name":"NSGetModDescriptionByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
+			"name": "NSFetchVerifiedModsManifesto",
+			"helpText": "Retrieves the verified mods list from the central authority (GitHub).",
+			"returnTypeString": "void",
+			"argTypes": ""
+
 		},
 		{
-			"name":"NSGetModVersionByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
+			"name": "NSIsModDownloadable",
+			"helpText": "checks whether a mod is verified and can be auto-downloaded",
+			"returnTypeString": "bool",
+			"argTypes": "string name, string version"
+
 		},
 		{
-			"name":"NSGetModDownloadLinkByModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"string modName"
+			"name": "NSDownloadMod",
+			"helpText": "downloads a given mod from distant API to local game profile",
+			"returnTypeString": "void",
+			"argTypes": "string name, string version"
 		},
 		{
-			"name":"NSGetModLoadPriority",
-			"helpText":"",
-			"returnTypeString":"int",
-			"argTypes":"string modName"
+			"name": "NSCancelModDownload",
+			"helpText": "prevents installation of the mod currently being installed",
+			"returnTypeString": "void",
+			"argTypes": ""
 		},
 		{
-			"name":"NSIsModRequiredOnClient",
-			"helpText":"",
-			"returnTypeString":"bool",
-			"argTypes":"string modName"
-		},
-		{
-			"name":"NSGetModConvarsByModName",
-			"helpText":"",
-			"returnTypeString":"array<string>",
-			"argTypes":"string modName"
+			"name": "NSGetModInstallState",
+			"helpText": "get status of the mod currently being installed",
+			"returnTypeString": "ModInstallState",
+			"argTypes": ""
 		},
 		{
 			"name":"NSReloadMods",
@@ -443,76 +489,10 @@
 			"argTypes":""
 		},
 		{
-			"name":"NSGetServerName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerDescription",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerMap",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerPlaylist",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerPlayerCount",
-			"helpText":"",
-			"returnTypeString":"int",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerMaxPlayerCount",
-			"helpText":"",
-			"returnTypeString":"int",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerID",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSServerRequiresPassword",
-			"helpText":"",
-			"returnTypeString":"bool",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerRequiredModsCount",
-			"helpText":"",
-			"returnTypeString":"int",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerRegion",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex"
-		},
-		{
-			"name":"NSGetServerRequiredModName",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex, int modIndex"
-		},
-		{
-			"name":"NSGetServerRequiredModVersion",
-			"helpText":"",
-			"returnTypeString":"string",
-			"argTypes":"int serverIndex, int modIndex"
+			"name": "NSGetGameServers",
+			"helpText": "Gets all fetched servers",
+			"returnTypeString": "array<ServerInfo>",
+			"argTypes": ""
 		},
 		{
 			"name":"NSClearRecievedServerList",
@@ -638,6 +618,60 @@
 			"name":"NSIsLocalHttpAllowed",
 			"helpText":"Whether or not HTTP requests can be made to a private network address. You can enable this by starting the game with -allowlocalhttp.",
 			"returnTypeString":"bool",
+			"argTypes":""
+		},
+		{
+			"name":"NS_InternalLoadFile",
+			"helpText":"Loads a file asynchronously.",
+			"returnTypeString":"int",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSSaveFile",
+			"helpText":"Saves a file.",
+			"returnTypeString":"void",
+			"argTypes":"string file, string data"
+		},
+		{
+			"name":"NSSaveJSONFile",
+			"helpText":"Converts a squirrel table to a json string, then saves it to a file.",
+			"returnTypeString":"void",
+			"argTypes":"string file, table data"
+		},
+		{
+			"name":"NSDoesFileExist",
+			"helpText":"Checks whether or not a file exists.",
+			"returnTypeString":"bool",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSDeleteFile",
+			"helpText":"Deletes a file.",
+			"returnTypeString":"bool",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NS_InternalGetAllFiles",
+			"helpText":"Returns an array of all files in a mod's save folder.",
+			"returnTypeString":"array<string>",
+			"argTypes":"string path"
+		},
+		{
+			"name":"NSGetFileSize",
+			"helpText":"Returns the size of a file, in KB, rounded down.",
+			"returnTypeString":"int",
+			"argTypes":"string file"
+		},
+		{
+			"name":"NSIsFolder",
+			"helpText":"Returns whether or not a given path leads to a folder.",
+			"returnTypeString":"bool",
+			"argTypes":"string path"
+    },
+		{
+			"name":"NSGetMasterServerAuthResult",
+			"helpText":"",
+			"returnTypeString":"MasterServerAuthResult",
 			"argTypes":""
 		}
 	]

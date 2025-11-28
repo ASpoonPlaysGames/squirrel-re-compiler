@@ -13,8 +13,12 @@ global function FW_ReplaceMegaTurret
 global function FW_IsPlayerInFriendlyTerritory
 global function FW_IsPlayerInEnemyTerritory
 
+// Callbacks for mods to reduce harvester damage of modded weapons
+global function FW_AddHarvesterDamageSourceModifier
+global function FW_RemoveHarvesterDamageSourceModifier
+
 // you need to deal this much damage to trigger "FortWarTowerDamage" score event
-const int FW_HARVESTER_DAMAGE_SEGMENT = 1500
+const int FW_HARVESTER_DAMAGE_SEGMENT = 5250
 
 // basically needs to match "waves count - bosswaves count"
 const int FW_MAX_LEVELS = 3
@@ -85,6 +89,9 @@ struct CampSpawnStruct
 struct
 {
 	array<HarvesterStruct> harvesters
+	
+	// Stores damage source IDs and the modifier applied to them when they damage a harvester
+	table< int, float > harvesterDamageSourceMods
 
 	// save camp's info_target, we spawn camps after game starts, or player's first life won't show up correct camp icons
 	array<entity> camps
@@ -117,15 +124,19 @@ void function GamemodeFW_Init()
 	// _battery_port.gnut needs this
 	RegisterSignal( "BatteryActivate" )
 
-	AiGameModes_SetGruntWeapons( [ "mp_weapon_rspn101", "mp_weapon_dmr", "mp_weapon_r97", "mp_weapon_lmg" ] )
-	AiGameModes_SetSpectreWeapons( [ "mp_weapon_hemlok_smg", "mp_weapon_doubletake", "mp_weapon_mastiff" ] )
+	// mp_thaw's intro spawnpoint have some problem, player can be stucked on the sky, so override it
+	if ( GetMapName() == "mp_thaw" )
+		SetSpawnpointGamemodeOverride( TEAM_DEATHMATCH )
+
+	AiGameModes_SetNPCWeapons( "npc_soldier", [ "mp_weapon_rspn101", "mp_weapon_dmr", "mp_weapon_r97", "mp_weapon_lmg" ] )
+	AiGameModes_SetNPCWeapons( "npc_spectre", [ "mp_weapon_hemlok_smg", "mp_weapon_doubletake", "mp_weapon_mastiff" ] )
 
 	AddCallback_EntitiesDidLoad( LoadEntities )
 	AddCallback_GameStateEnter( eGameState.Prematch, OnFWGamePrematch )
 	AddCallback_GameStateEnter( eGameState.Playing, OnFWGamePlaying )
 
 	AddSpawnCallback( "item_powerup", FWAddPowerUpIcon )
-	AddSpawnCallback( "npc_turret_mega", FWTurretHighlight )
+	AddSpawnCallback( "npc_turret_mega", OnFWTurretSpawned )
 
 	AddCallback_OnClientConnected( OnFWPlayerConnected )
 	AddCallback_PlayerClassChanged( OnFWPlayerClassChanged )
@@ -138,90 +149,6 @@ void function GamemodeFW_Init()
 	SetRecalculateTitanReplacementPointCallback( FW_ReCalculateTitanReplacementPoint )
 	SetRequestTitanAllowedCallback( FW_RequestTitanAllowed )
 }
-
-
-
-//////////////////////////
-///// HACK FUNCTIONS /////
-//////////////////////////
-
-const array<string> HACK_CLEANUP_MAPS =
-[
-	"mp_grave",
-	"mp_homestead",
-	"mp_complex3"
-]
-
-//if npcs outside the map try to fire( like in death animation ), it will cause a engine error
-
-// in mp_grave, npcs will sometimes stuck underground
-const float GRAVE_CHECK_HEIGHT = 1700 // the map's lowest ground is 1950+, npcs will stuck under -4000 or -400
-// in mp_homestead, npcs will sometimes stuck in the sky
-const float HOMESTEAD_CHECK_HIEGHT = 8000 // the map's highest part is 7868+, npcs will stuck above 13800+
-// in mp_complex3, npcs will sometimes stuck in the sky
-const float COMPLEX_CHECK_HEIGHT = 7000 // the map's highest part is 6716+, npcs will stuck above 9700+
-
-// do a hack
-void function HACK_ForceDestroyNPCs()
-{
-	thread HACK_ForceDestroyNPCs_Threaded()
-}
-
-void function HACK_ForceDestroyNPCs_Threaded()
-{
-	string mapName = GetMapName()
-	if( !( HACK_CLEANUP_MAPS.contains( mapName ) ) )
-		return
-
-	while( true )
-	{
-		if( mapName == "mp_grave" )
-		{
-			foreach( entity npc in GetNPCArray() )
-			{
-				if( npc.GetOrigin().z <= GRAVE_CHECK_HEIGHT )
-				{
-					npc.ClearParent()
-					npc.Destroy()
-				}
-			}
-		}
-		if( mapName == "mp_homestead" )
-		{
-			foreach( entity npc in GetNPCArray() )
-			{
-				// neither spawning from droppod nor hotdropping
-				if( !IsValid( npc.GetParent() ) && !npc.e.isHotDropping )
-				{
-					if( npc.GetOrigin().z >= HOMESTEAD_CHECK_HIEGHT )
-					{
-						npc.Destroy()
-					}
-				}
-			}
-		}
-		if( mapName == "mp_complex3" )
-		{
-			foreach( entity npc in GetNPCArray() )
-			{
-				// neither spawning from droppod nor hotdropping
-				if( !IsValid( npc.GetParent() ) && !npc.e.isHotDropping )
-				{
-					if( npc.GetOrigin().z >= COMPLEX_CHECK_HEIGHT )
-					{
-						npc.Destroy()
-					}
-				}
-			}
-		}
-		WaitFrame()
-	}
-}
-
-//////////////////////////////
-///// HACK FUNCTIONS END /////
-//////////////////////////////
-
 
 
 ////////////////////////////////
@@ -301,8 +228,6 @@ void function OnFWGamePlaying()
 	StartFWCampThink()
 	InitTurretSettings()
 	FWPlayerObjectiveState()
-
-	HACK_ForceDestroyNPCs()
 }
 
 void function OnFWPlayerConnected( entity player )
@@ -452,7 +377,7 @@ bool function TryFWTerritoryDialogue( entity territory, entity player )
 
 	// the territory trigger will only save players and titans
 	array<entity> allEntsInside = GetAllEntitiesInTrigger( territory )
-	allEntsInside.removebyvalue( null ) // since we're using a fake trigger, need to check this
+	ArrayRemoveInvalid( allEntsInside ) // since we're using a fake trigger, need to check this
 	array<entity> friendliesInside // this means territory's friendly team
 	array<entity> enemiesInside // this means territory's enemy team
 	array<entity> enemyTitansInside
@@ -582,9 +507,6 @@ void function LoadEntities()
 					// create turret, spawn with no team and set it after game starts
 					entity turret = CreateNPC( "npc_turret_mega", TEAM_UNASSIGNED, info_target.GetOrigin(), info_target.GetAngles() )
 					SetSpawnOption_AISettings( turret, "npc_turret_mega_fortwar" )
-					SetDefaultMPEnemyHighlight( turret ) // for sonar highlights to work
-					Highlight_SetFriendlyHighlight( turret, "fw_friendly" )
-					AddEntityCallback_OnDamaged( turret, OnMegaTurretDamaged )
 					DispatchSpawn( turret )
 
 					turretsite.turret = turret
@@ -748,12 +670,13 @@ void function InitFWCampSites()
 	foreach( int index, CampSiteStruct campsite in file.fwCampSites )
 	{
 		entity campInfo = campsite.camp
-		float radius = float( campInfo.kv.radius )
+		float radius = 2048 //float( campInfo.kv.radius )
 
 		// get droppod spawns
-		foreach ( entity spawnpoint in SpawnPoints_GetDropPod() )
-			if ( Distance( campInfo.GetOrigin(), spawnpoint.GetOrigin() ) < radius )
-				campsite.validDropPodSpawns.append( spawnpoint )
+		// these spawn points suck because sometimes they are outside the map
+		//foreach ( entity spawnpoint in SpawnPoints_GetDropPod() )
+			//if ( Distance( campInfo.GetOrigin(), spawnpoint.GetOrigin() ) < radius )
+				//campsite.validDropPodSpawns.append( spawnpoint )
 
 		// get titan spawns
 		foreach ( entity spawnpoint in SpawnPoints_GetTitan() )
@@ -933,11 +856,11 @@ void function AddIgnoredCountToOtherCamps( CampSiteStruct senderCamp )
 // functions from at
 void function FW_SpawnDroppodSquad( CampSiteStruct campsite, string aiType )
 {
-	entity spawnpoint
-	if ( campsite.validDropPodSpawns.len() == 0 )
-		spawnpoint = campsite.tracker // no spawnPoints valid, use camp itself to spawn
-	else
-		spawnpoint = campsite.validDropPodSpawns.getrandom()
+	entity spawnpoint = campsite.tracker
+	array<entity> spawnpoints = campsite.validDropPodSpawns
+	spawnpoints.extend( campsite.validTitanSpawns )
+	if ( spawnpoints.len() > 0 )
+		spawnpoint = spawnpoints.getrandom()
 
 	// add variation to spawns
 	wait RandomFloat( 1.0 )
@@ -957,6 +880,7 @@ void function FW_HandleSquadSpawn( array<entity> guys, CampSiteStruct campsite, 
 		// show on minimap to let players kill them
 		guy.Minimap_AlwaysShow( TEAM_MILITIA, null )
 		guy.Minimap_AlwaysShow( TEAM_IMC, null )
+		guy.SetEnemyChangeCallback( OnNPCEnemyChange )
 
 		// untrack them on death
 		thread FW_WaitToUntrackNPC( guy, campsite.campId, aiType )
@@ -967,11 +891,11 @@ void function FW_HandleSquadSpawn( array<entity> guys, CampSiteStruct campsite, 
 
 void function FW_SpawnReaper( CampSiteStruct campsite )
 {
-	entity spawnpoint
-	if ( campsite.validDropPodSpawns.len() == 0 )
-		spawnpoint = campsite.tracker // no spawnPoints valid, use camp itself to spawn
-	else
-		spawnpoint = campsite.validDropPodSpawns.getrandom()
+	entity spawnpoint = campsite.tracker
+	array<entity> spawnpoints = campsite.validDropPodSpawns
+	spawnpoints.extend( campsite.validTitanSpawns )
+	if ( spawnpoints.len() > 0 )
+		spawnpoint = spawnpoints.getrandom()
 
 	// add variation to spawns
 	wait RandomFloat( 1.0 )
@@ -1018,6 +942,36 @@ void function FW_WaitToUntrackNPC( entity guy, string campId, string aiType )
 	guy.WaitSignal( "OnDeath", "OnDestroy" )
 	if( aiType in file.trackedCampNPCSpawns[ campId ] ) // maybe escalated?
 		file.trackedCampNPCSpawns[ campId ][ aiType ]--
+}
+
+void function OnNPCEnemyChange( entity guy )
+{
+	entity enemy = guy.GetEnemy()
+	if ( !IsAlive( guy ) || guy.IsFrozen() || !IsAlive( enemy ) || !IsValid( guy.GetActiveWeapon() ) )
+		return
+
+	string archer = "mp_weapon_rocket_launcher"
+	array<string> weapons = []
+	foreach ( entity weapon in guy.GetMainWeapons() )
+		weapons.append( weapon.GetWeaponClassName() )
+
+	if ( enemy == fw_harvesterImc.harvester || enemy == fw_harvesterMlt.harvester )
+	{
+		if ( !weapons.contains( archer ) )
+			guy.GiveWeapon( archer )
+		guy.SetActiveWeaponByName( archer )
+	}
+	else
+	{
+		foreach ( string weapon in weapons )
+			if ( weapon == archer )
+				guy.TakeWeaponNow( archer )
+		array<string> newweapons = []
+		foreach ( entity newweapon in guy.GetMainWeapons() )
+			newweapons.append( newweapon.GetWeaponClassName() )
+		if ( newweapons.len() )
+			guy.SetActiveWeaponByName( newweapons.getrandom() )
+	}
 }
 
 /////////////////////////////////
@@ -1238,10 +1192,18 @@ array<entity> function FW_GetTitanSpawnPointsForTeam( int team )
 	return validSpawnPoints
 }
 
+// some maps have reversed startpoints! we need a hack
+const array<string> TITAN_POINT_REVERSED_MAPS =
+[
+	"mp_grave"
+]
+
 // "Respawn as Titan" don't follow the rateSpawnPoints, fix it manually
 entity function FW_ForcedTitanStartPoint( entity player, entity basePoint )
 {
 	int team = player.GetTeam()
+	if ( TITAN_POINT_REVERSED_MAPS.contains( GetMapName() ) )
+		team = GetOtherTeam( player.GetTeam() )
 	array<entity> startPoints = SpawnPoints_GetTitanStart( team )
 	entity validPoint = startPoints[ RandomInt( startPoints.len() ) ] // choose a random( maybe not safe ) start point
 	return validPoint
@@ -1330,8 +1292,8 @@ void function FWAreaThreatLevelThink_Threaded()
 		// check threats
 		array<entity> imcEntArray = GetAllEntitiesInTrigger( imcTerritory )
 		array<entity> mltEntArray = GetAllEntitiesInTrigger( mltTerritory )
-		imcEntArray.removebyvalue( null ) // since we're using a fake trigger, need to check this
-		mltEntArray.removebyvalue( null )
+		ArrayRemoveInvalid( imcEntArray ) // since we're using a fake trigger, need to check this
+		ArrayRemoveInvalid( mltEntArray )
 		foreach( entity ent in imcEntArray )
 		{
 			//print( ent )
@@ -1384,19 +1346,23 @@ void function FWAreaThreatLevelThink_Threaded()
 ///// TURRET FUNCTIONS /////
 ////////////////////////////
 
-void function FWTurretHighlight( entity turret )
+void function OnFWTurretSpawned( entity turret )
 {
-    thread FWTurretHighlightThink( turret )
+	turret.EnableTurret() // always enabled
+	SetDefaultMPEnemyHighlight( turret ) // for sonar highlights to work
+	AddEntityCallback_OnDamaged( turret, OnMegaTurretDamaged )
+	thread FWTurretHighlightThink( turret )
 }
 
 // this will clear turret's highlight upon their death, for notifying players to fix them
 void function FWTurretHighlightThink( entity turret )
 {
-    turret.EndSignal( "OnDestroy" )
-    Highlight_SetFriendlyHighlight( turret, "fw_friendly" )
+	turret.EndSignal( "OnDestroy" )
+	WaitFrame() // wait a frame for other turret spawn options to set up
+	Highlight_SetFriendlyHighlight( turret, "fw_friendly" ) // initialize the highlight, they will show upon player's next respawn
 
-    turret.WaitSignal( "OnDeath" )
-    Highlight_ClearFriendlyHighlight( turret )
+	turret.WaitSignal( "OnDeath" )
+	Highlight_ClearFriendlyHighlight( turret )
 }
 
 // for battery_port, replace the turret with new one
@@ -1407,8 +1373,6 @@ entity function FW_ReplaceMegaTurret( entity perviousTurret )
 
 	entity turret = CreateNPC( "npc_turret_mega", perviousTurret.GetTeam(), perviousTurret.GetOrigin(), perviousTurret.GetAngles() )
 	SetSpawnOption_AISettings( turret, "npc_turret_mega_fortwar" )
-	SetDefaultMPEnemyHighlight( turret ) // for sonar highlights to work
-	AddEntityCallback_OnDamaged( turret, OnMegaTurretDamaged )
 	DispatchSpawn( turret )
 
 	// apply settings to new turret, must up on date
@@ -1731,13 +1695,15 @@ void function FW_createHarvester()
 {
 	// imc havester spawn
 	fw_harvesterImc = SpawnHarvester( file.harvesterImc_info.GetOrigin(), file.harvesterImc_info.GetAngles(), GetCurrentPlaylistVarInt( "fw_harvester_health", FW_DEFAULT_HARVESTER_HEALTH ), GetCurrentPlaylistVarInt( "fw_harvester_shield", FW_DEFAULT_HARVESTER_SHIELD ), TEAM_IMC )
+	fw_harvesterImc.harvester.SetArmorType( ARMOR_TYPE_HEAVY )
 	fw_harvesterImc.harvester.Minimap_SetAlignUpright( true )
 	fw_harvesterImc.harvester.Minimap_AlwaysShow( TEAM_IMC, null )
 	fw_harvesterImc.harvester.Minimap_AlwaysShow( TEAM_MILITIA, null )
 	fw_harvesterImc.harvester.Minimap_SetHeightTracking( true )
 	fw_harvesterImc.harvester.Minimap_SetZOrder( MINIMAP_Z_OBJECT )
 	fw_harvesterImc.harvester.Minimap_SetCustomState( eMinimapObject_prop_script.FD_HARVESTER )
-	AddEntityCallback_OnDamaged( fw_harvesterImc.harvester, OnHarvesterDamaged )
+	SetObjectCanBeMeleed( fw_harvesterImc.harvester, true )
+	AddEntityCallback_OnFinalDamaged( fw_harvesterImc.harvester, OnHarvesterDamaged )
 	AddEntityCallback_OnPostDamaged( fw_harvesterImc.harvester, OnHarvesterPostDamaged )
 	
 	// imc havester settings
@@ -1756,13 +1722,15 @@ void function FW_createHarvester()
 
 	// mlt havester spawn
 	fw_harvesterMlt = SpawnHarvester( file.harvesterMlt_info.GetOrigin(), file.harvesterMlt_info.GetAngles(), GetCurrentPlaylistVarInt( "fw_harvester_health", FW_DEFAULT_HARVESTER_HEALTH ), GetCurrentPlaylistVarInt( "fw_harvester_shield", FW_DEFAULT_HARVESTER_SHIELD ), TEAM_MILITIA )
+	fw_harvesterMlt.harvester.SetArmorType( ARMOR_TYPE_HEAVY )
 	fw_harvesterMlt.harvester.Minimap_SetAlignUpright( true )
 	fw_harvesterMlt.harvester.Minimap_AlwaysShow( TEAM_IMC, null )
 	fw_harvesterMlt.harvester.Minimap_AlwaysShow( TEAM_MILITIA, null )
 	fw_harvesterMlt.harvester.Minimap_SetHeightTracking( true )
 	fw_harvesterMlt.harvester.Minimap_SetZOrder( MINIMAP_Z_OBJECT )
 	fw_harvesterMlt.harvester.Minimap_SetCustomState( eMinimapObject_prop_script.FD_HARVESTER )
-	AddEntityCallback_OnDamaged( fw_harvesterMlt.harvester, OnHarvesterDamaged )
+	SetObjectCanBeMeleed( fw_harvesterMlt.harvester, true )
+	AddEntityCallback_OnFinalDamaged( fw_harvesterMlt.harvester, OnHarvesterDamaged )
 	AddEntityCallback_OnPostDamaged( fw_harvesterMlt.harvester, OnHarvesterPostDamaged )
 
 	// mlt havester settings
@@ -1777,6 +1745,53 @@ void function FW_createHarvester()
 	// scores starts from 100, TeamScore means harvester health; TeamScore2 means shield bar
 	GameRules_SetTeamScore( TEAM_IMC , 100 )
 	GameRules_SetTeamScore2( TEAM_IMC , 100 )
+
+	InitHarvesterDamageMods()
+}
+
+void function FW_AddHarvesterDamageSourceModifier( int id, float mod )
+{
+	if ( !( id in file.harvesterDamageSourceMods ) )
+		file.harvesterDamageSourceMods[id] <- 1.0
+
+	file.harvesterDamageSourceMods[id] *= mod
+}
+
+void function FW_RemoveHarvesterDamageSourceModifier( int id, float mod )
+{
+	if ( !( id in file.harvesterDamageSourceMods ) )
+		return
+
+	file.harvesterDamageSourceMods[id] /= mod
+
+	if ( file.harvesterDamageSourceMods[id] == 1.0 )
+		delete file.harvesterDamageSourceMods[id]
+}
+
+void function InitHarvesterDamageMods()
+{
+	// Damage balancing
+	const float CORE_DAMAGE_FRAC = 0.67
+	const float NUKE_EJECT_DAMAGE_FRAC = 0.25
+	const float DOT_DAMAGE_FRAC = 0.5
+
+	// Core balancing
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titancore_laser_cannon, CORE_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titancore_salvo_core, CORE_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titanweapon_flightcore_rockets, CORE_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titancore_shift_core, CORE_DAMAGE_FRAC )
+	// Flame Core is not included since its single target damage is low compared to the others
+
+	// Nuke eject balancing
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.damagedef_nuclear_core, NUKE_EJECT_DAMAGE_FRAC )
+
+	// Damage over time balancing
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titanweapon_dumbfire_rockets, DOT_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titanweapon_meteor_thermite, DOT_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titanweapon_flame_wall, DOT_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titanability_slow_trap, DOT_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titancore_flame_wave_secondary, DOT_DAMAGE_FRAC )
+	FW_AddHarvesterDamageSourceModifier( eDamageSourceId.mp_titanweapon_heat_shield, DOT_DAMAGE_FRAC )
 }
 
 // this function can't handle specific damageSourceID, such as plasma railgun, but is the best to scale both shield and health damage
@@ -1784,6 +1799,21 @@ void function OnHarvesterDamaged( entity harvester, var damageInfo )
 {
 	if ( !IsValid( harvester ) )
 		return
+
+	// Entities (non-Players and non-NPCs) don't consider damaged entity lists, which makes ground attacks (e.g. Arc Wave) and thermite hit more than they should
+	entity inflictor = DamageInfo_GetInflictor( damageInfo )
+	if ( IsValid( inflictor ) && ( inflictor.e.onlyDamageEntitiesOnce || inflictor.e.onlyDamageEntitiesOncePerTick ) )
+	{
+		if ( inflictor.e.damagedEntities.contains( harvester ) )
+		{
+			DamageInfo_SetDamage( damageInfo, 0 )
+			return
+		}
+		else
+		{
+			inflictor.e.damagedEntities.append( harvester )
+		}
+	}
 
 	int friendlyTeam = harvester.GetTeam()
 	int enemyTeam = GetOtherTeam( friendlyTeam )
@@ -1809,52 +1839,9 @@ void function OnHarvesterDamaged( entity harvester, var damageInfo )
 	// always reset harvester's recharge delay
 	harvesterstruct.lastDamage = Time()
 
-	
-	// done damage adjustments here, since harvester prop's health is setting manually through damageAmount
-	if ( damageSourceID == eDamageSourceId.mp_titancore_laser_cannon )
-		DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 50 ) // laser core shreds super well for some reason
-
-    // plasma railgun can always do no-charge shots and deal same damage
-    if ( damageSourceID == eDamageSourceId.mp_titanweapon_sniper ) // nerf northstar
-    {
-		DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 3 )
-		entity inflictor = DamageInfo_GetInflictor( damageInfo )
-		if( IsValid( inflictor ) && inflictor.IsProjectile() )
-		{
-			inflictor.s.extraDamagePerBullet = expect int( inflictor.s.extraDamagePerBullet ) / 3
-		}
-	}
-
-    // leadwall have high pilot damage so works really well aginst harvester
-    if ( damageSourceID == eDamageSourceId.mp_titanweapon_leadwall ) // nerf ronin
-        DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 2 )
-
-    // missiles mostly have high pilot damage so works really well aginst harvester
-	if ( damageSourceID == eDamageSourceId.mp_titanweapon_salvo_rockets ||
-		damageSourceID == eDamageSourceId.mp_titanweapon_shoulder_rockets ||
-        damageSourceID == eDamageSourceId.mp_titancore_salvo_core
-	) // titan missiles
-		DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 3 )
-
-	if ( damageSourceID == eDamageSourceId.mp_titanweapon_sticky_40mm ) // 40mm trakcer cannon
-		DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 2 )
-
-    if ( damageSourceID == eDamageSourceId.mp_titanweapon_flightcore_rockets ) // flight core shreds well
-        DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 5 ) 
-
-    // cluster missle is very effective against non-moving targets
-    if ( damageSourceID == eDamageSourceId.mp_titanweapon_dumbfire_rockets ) // cluster missile shreds super well
-        DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 10 ) 
-
-    // scorch's thermites is very effective against non-moving targets
-	if ( damageSourceID == eDamageSourceId.mp_titanweapon_heat_shield || 
-        damageSourceID == eDamageSourceId.mp_titanweapon_meteor_thermite ||
-		damageSourceID == eDamageSourceId.mp_titanweapon_flame_wall ||
-		damageSourceID == eDamageSourceId.mp_titanability_slow_trap ||
-		damageSourceID == eDamageSourceId.mp_titancore_flame_wave_secondary
-	) // scorch's thermite damages, nerf scorch
-		DamageInfo_SetDamage( damageInfo, DamageInfo_GetDamage( damageInfo ) / 5 )
-
+	// Should be moved to a final damage callback once those are added
+	if ( damageSourceID in file.harvesterDamageSourceMods )
+		DamageInfo_ScaleDamage( damageInfo, file.harvesterDamageSourceMods[ damageSourceID ] )
 }
 void function OnHarvesterPostDamaged( entity harvester, var damageInfo )
 {
@@ -1895,12 +1882,11 @@ void function OnHarvesterPostDamaged( entity harvester, var damageInfo )
 
 	damageAmount = DamageInfo_GetDamage( damageInfo ) // get damageAmount again after all damage adjustments
 
-	if ( !attacker.IsTitan() )
+	if ( !attacker.IsTitan() && attacker.IsPlayer() )
 	{
-		if( attacker.IsPlayer() )
-			Remote_CallFunction_NonReplay( attacker , "ServerCallback_FW_NotifyTitanRequired" )
+		Remote_CallFunction_NonReplay( attacker , "ServerCallback_FW_NotifyTitanRequired" )
 		DamageInfo_SetDamage( damageInfo, harvester.GetShieldHealth() )
-		damageAmount = 0 // never damage haveter's prop
+		damageAmount = 0 // never damage harvester's prop
 	}
 
 	if( !harvesterstruct.harvesterShieldDown )
@@ -1969,7 +1955,6 @@ void function OnHarvesterPostDamaged( entity harvester, var damageInfo )
             file.playerDamageHarvester[ attacker ].storedDamage -= FW_HARVESTER_DAMAGE_SEGMENT // reset stored damage
         }
 	}
-
 
 	// harvester down!
     if ( harvester.GetHealth() == 0 )
@@ -2282,7 +2267,7 @@ function FW_UseBattery( batteryPortvar, playervar ) //actually void function( en
     if( turretReplaced || teamChanged ) // replaced/hacked turret will spawn with 50% health
         newHealth = int ( turret.GetMaxHealth() * GetCurrentPlaylistVarFloat( "fw_turret_hacked_health", TURRET_HACKED_HEALTH_PERCENTAGE ) )
     // restore turret shield
-    int newShield = int ( min( turret.GetShieldHealthMax(), turret.GetShieldHealth() + ( turret.GetShieldHealth() * GetCurrentPlaylistVarFloat( "fw_turret_fixed_shield", TURRET_FIXED_SHIELD_PERCENTAGE ) ) ) )
+    int newShield = int( min( turret.GetShieldHealthMax(), turret.GetShieldHealth() + ( turret.GetShieldHealthMax() * GetCurrentPlaylistVarFloat( "fw_turret_fixed_shield", TURRET_FIXED_SHIELD_PERCENTAGE ) ) ) )
     if( turretReplaced || teamChanged ) // replaced/hacked turret will spawn with 50% shield
         newShield = int ( turret.GetShieldHealthMax() * GetCurrentPlaylistVarFloat( "fw_turret_hacked_shield", TURRET_HACKED_SHIELD_PERCENTAGE ) )
     // only do team score event if turret's shields down, encourage players to hack more turrets
