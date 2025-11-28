@@ -8,9 +8,9 @@ inputs:
   native-json:
     description: "The path to the json file containing all of the native functions being added"
     required: true
-  vanilla:
-    description: "Whether or not to compile with the VANILLA const set to 1 or 0"
-    required: true
+  otherArgs:
+    description: "Other arguments, passed directly."
+    required: false
     
 
 runs:
@@ -18,5 +18,5 @@ runs:
   steps:
     - run: |
         cd ${{ github.action_path }}
-        SquirrelStandalone.exe "${{ inputs.mods-directory }}" "${{ inputs.native-json }}" "${{ inputs.vanilla }}"
+        SquirrelStandalone.exe "${{ inputs.mods-directory }}" "${{ inputs.native-json }}" ${{ inputs.constants }}
       shell: cmd
